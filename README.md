@@ -1,2 +1,2 @@
 # CVAEI
-Conditional Variational Autoencoder for Simulation based Inference
+Conditional Variational Autoencoder for Simulation based Inference.
