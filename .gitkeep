@@ -1,5 +1,0 @@
-touch cvaei/models/.gitkeep
-touch cvaei/plots/.gitkeep
-touch examples/.gitkeep
-touch docs/.gitkeep
-touch tests/.gitkeep
