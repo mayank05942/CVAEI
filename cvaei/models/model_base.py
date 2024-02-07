@@ -69,10 +69,11 @@ class ModelBase(nn.Module):
         raise NotImplementedError("The generate method must be implemented by the subclass.")
     
     @abstractmethod
-    def train(self, inputs, targets):
+    def train(self, *inputs: Any, **kwargs) -> torch.Tensor:
         """
-        Sub-classable method for training a given surrogate. Each derived class must implement.
+        Sub-classable method for training the cave model. Each derived class must implement.
         """
+        raise NotImplementedError("The generate method must be implemented by the subclass.")
     
 
 
