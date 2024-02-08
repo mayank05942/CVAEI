@@ -124,7 +124,7 @@ class CVAE(ModelBase):
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        if device.type == 'gpu':
+        if device.type == 'cuda':
             print(f"Using GPU: {torch.cuda.get_device_name(device)}")
         else:
             print("Using CPU")
