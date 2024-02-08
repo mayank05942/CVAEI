@@ -121,10 +121,10 @@ class CVAE(ModelBase):
                     cycle_length=10, num_cycles=1, device=None, 
                     theta_normalizer=None, data_normalizer=None, forward_model=None):
 
-        if device is None: 
+        if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        if device.type == 'cuda':
+        if device.type == 'gpu':
             print(f"Using GPU: {torch.cuda.get_device_name(device)}")
         else:
             print("Using CPU")
@@ -154,11 +154,10 @@ class CVAE(ModelBase):
                 theta_pred_unnorm = theta_normalizer.inverse_transform(theta_pred)
 
                 # Pass through the model
-                #print(theta_pred_unnorm.shape)
-                #y_pred_unnorm = forward_model(theta_pred_unnorm)
+
                 y_pred_unnorm  = torch.stack([forward_model(t) for t in theta_pred_unnorm])
                 # transform to get in the scale of data
-                y_pred_norm = data_normalizer.transform(y_pred_unnorm)
+                y_pred_norm = data_normalizer.transform(y_pred_unnorm).to(device)
                 
                 # Compute the loss
                 loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
