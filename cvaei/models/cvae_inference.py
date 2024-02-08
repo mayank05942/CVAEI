@@ -3,7 +3,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 from typing import List, Any, Tuple
 import numpy as np
-from model_base import ModelBase
+from .model_base import ModelBase
 
 class Encoder(nn.Module):
     def __init__(self, input_dim: int, latent_dim: int, hidden_dims: List[int] = None, 
@@ -39,6 +39,7 @@ class Decoder(nn.Module):
         
         # Adjust latent_dim to account for concatenated conditional data
         adjusted_latent_dim = latent_dim + conditional_dim
+        
 
         if hidden_dims is None:
             hidden_dims = [256, 256, 256]
@@ -71,10 +72,10 @@ class CVAE(ModelBase):
         super(CVAE, self).__init__()
 
         self.encoder = Encoder(input_dim=input_dim, latent_dim=latent_dim, 
-                               hidden_dims=encoder_hidden_dims, activation_fn=activation_fn).to(device)
+                               hidden_dims=encoder_hidden_dims, activation_fn=activation_fn)
         self.decoder = Decoder(latent_dim=latent_dim, output_dim=output_dim, 
                                conditional_dim=conditional_dim, hidden_dims=decoder_hidden_dims, 
-                               activation_fn=activation_fn).to(device)
+                               activation_fn=activation_fn)
 
    
     def encode(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -102,12 +103,12 @@ class CVAE(ModelBase):
         kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         return recon_loss + kwargs.get('beta', 1) * kld_loss
     
-    def train(model, train_loader, optimizer, epochs=10, device, beta=0.1):
-        if not device: 
+    def train_model(self, train_loader, optimizer, epochs=10, beta=0.1, device = None):
+        if device is None: 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        model.to(device)
-        model.train()  # Set the model to training mode
+        self.to(device)
+        self.train()  # Set the model to training mode
 
         for epoch in range(epochs):
             total_loss = 0
@@ -117,10 +118,10 @@ class CVAE(ModelBase):
                 optimizer.zero_grad()  # Clear the gradients of all optimized tensors
                 
                 # Forward pass: Compute predicted output by passing inputs to the model
-                theta_pred, mu, logvar = model(theta, data)
+                theta_pred, mu, logvar =self(theta, data)
                 
                 # Compute the loss
-                loss = model.loss_function(theta_pred, theta, mu, logvar, M_N=1.0/len(train_loader), beta=beta)
+                loss = self.loss_function(theta_pred, theta, mu, logvar, M_N=1.0/len(train_loader), beta=beta)
                 
                 # Backward pass: Compute gradient of the loss with respect to model parameters
                 loss.backward()
