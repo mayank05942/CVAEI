@@ -94,16 +94,26 @@ class CVAE(ModelBase):
         z = self.reparameterize(mu, logvar)
         return self.decode(z, conditional_data), mu, logvar
 
-    def loss_function(self, *inputs: Any, **kwargs) -> torch.Tensor:
-        recons = inputs[0]
-        input = inputs[1]
-        mu = inputs[2]
-        logvar = inputs[3]
-        recon_loss = F.mse_loss(recons, input, reduction='sum')
-        kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        return recon_loss + kwargs.get('beta', 1) * kld_loss
     
-    def train_model(self, train_loader, optimizer, epochs=10, beta=0.1, device = None):
+    def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
+        # Reconstruction loss compares the input x to its reconstruction x_hat
+        recon_loss = F.mse_loss(x_hat, x, reduction='sum')
+        
+        # Misfit loss compares the actual y to the predicted y_hat
+        #misfit_loss = F.mse_loss(y_hat, y, reduction='sum')
+        misfit_loss = recon_loss
+        
+        # KL divergence loss
+        kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
+        
+        # Total loss
+        total_loss = recon_loss + misfit_loss + beta * kl_div
+        
+        return total_loss, recon_loss, misfit_loss, kl_div, beta
+
+
+    def train_model(self, train_loader, optimizer, epochs=10, cycle_length=10, num_cycles=1, device=None):
+
         if device is None: 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -112,28 +122,58 @@ class CVAE(ModelBase):
 
         for epoch in range(epochs):
             total_loss = 0
+            total_recon_loss = 0
+            total_misfit_loss = 0
+            total_kl_div = 0
+            epoch_beta = 0
+
+            epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+
+            # Calculate beta for this epoch
             for batch_idx, (data, theta) in enumerate(train_loader):
                 data, theta = data.to(device), theta.to(device)
 
                 optimizer.zero_grad()  # Clear the gradients of all optimized tensors
                 
-                # Forward pass: Compute predicted output by passing inputs to the model
-                theta_pred, mu, logvar =self(theta, data)
+                # Forward pass
+                theta_pred, mu, logvar = self(theta, data)
                 
                 # Compute the loss
-                loss = self.loss_function(theta_pred, theta, mu, logvar, M_N=1.0/len(train_loader), beta=beta)
+                loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, data, data , mu, logvar, 
+                                                    beta= epoch_beta)
                 
-                # Backward pass: Compute gradient of the loss with respect to model parameters
+                # Backward pass
                 loss.backward()
-                
-                # Perform a single optimization step (parameter update)
                 optimizer.step()
                 
                 total_loss += loss.item()
+                total_recon_loss += recon_loss.item()
+                total_misfit_loss += misfit_loss.item()
+                total_kl_div += kl_div.item()
 
             # Print average loss for the epoch
             avg_loss = total_loss / len(train_loader.dataset)
-            print(f'Epoch [{epoch+1}/{epochs}], Average Loss: {avg_loss:.4f}')
+            avg_recon_loss = total_recon_loss / len(train_loader.dataset)
+            avg_misfit_loss = total_misfit_loss / len(train_loader.dataset)
+            avg_kl_div = total_kl_div / len(train_loader.dataset)
+            print(f'Epoch [{epoch+1}/{epochs}], Beta: {epoch_beta:.4f}, Average Loss: {avg_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Misfit Loss: {avg_misfit_loss:.4f}, KL Div: {avg_kl_div:.4f}')
+            
 
+    @staticmethod
+    def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
+        """
+        Calculate the beta value for KL divergence regularization based on the current epoch.
 
+        Parameters:
+        epoch (int): Current training epoch.
+        total_epochs (int): Total number of epochs for training.
+        cycle_length (int): Length of a beta cycle.
+        num_cycles (int): Number of cycles in the total epochs.
 
+        Returns:
+        float: Calculated beta value.
+        """
+        cycle_epoch = epoch % cycle_length
+        if cycle_epoch < (cycle_length / num_cycles):
+            return cycle_epoch / (cycle_length / num_cycles)  # Linearly increase
+        return 1  # Remain at 1 for the rest of the cycle
