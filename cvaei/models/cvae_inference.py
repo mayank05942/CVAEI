@@ -71,6 +71,10 @@ class CVAE(ModelBase):
         
         super(CVAE, self).__init__()
 
+        self.latent_dim = latent_dim
+        self.input_dim = input_dim
+        self.conditional_dim =  conditional_dim
+
         self.encoder = Encoder(input_dim=input_dim, latent_dim=latent_dim, 
                                hidden_dims=encoder_hidden_dims, activation_fn=activation_fn)
         self.decoder = Decoder(latent_dim=latent_dim, output_dim=output_dim, 
@@ -100,8 +104,9 @@ class CVAE(ModelBase):
         recon_loss = F.mse_loss(x_hat, x, reduction='sum')
         
         # Misfit loss compares the actual y to the predicted y_hat
-        #misfit_loss = F.mse_loss(y_hat, y, reduction='sum')
-        misfit_loss = recon_loss
+        misfit_loss = F.mse_loss(y_hat, y, reduction='sum')
+        
+        #misfit_loss = recon_loss
         
         # KL divergence loss
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
@@ -110,37 +115,54 @@ class CVAE(ModelBase):
         total_loss = recon_loss + misfit_loss + beta * kl_div
         
         return total_loss, recon_loss, misfit_loss, kl_div, beta
+    
 
-
-    def train_model(self, train_loader, optimizer, epochs=10, cycle_length=10, num_cycles=1, device=None):
+    def train_model(self, train_loader, optimizer, epochs=10, 
+                    cycle_length=10, num_cycles=1, device=None, 
+                    theta_normalizer=None, data_normalizer=None, forward_model=None):
 
         if device is None: 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        if device.type == 'cuda':
+            print(f"Using GPU: {torch.cuda.get_device_name(device)}")
+        else:
+            print("Using CPU")
+
         self.to(device)
         self.train()  # Set the model to training mode
+
+        if theta_normalizer is None or data_normalizer is None or forward_model is None:
+            raise ValueError("theta_normalizer, data_normalizer, and forward_model must be provided")
 
         for epoch in range(epochs):
             total_loss = 0
             total_recon_loss = 0
             total_misfit_loss = 0
             total_kl_div = 0
-            epoch_beta = 0
-
             epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
 
-            # Calculate beta for this epoch
             for batch_idx, (data, theta) in enumerate(train_loader):
                 data, theta = data.to(device), theta.to(device)
 
-                optimizer.zero_grad()  # Clear the gradients of all optimized tensors
+                optimizer.zero_grad()
                 
                 # Forward pass
                 theta_pred, mu, logvar = self(theta, data)
+
+                # de-normalize theta predicted
+                theta_pred_unnorm = theta_normalizer.inverse_transform(theta_pred)
+
+                # Pass through the model
+                #print(theta_pred_unnorm.shape)
+                #y_pred_unnorm = forward_model(theta_pred_unnorm)
+                y_pred_unnorm  = torch.stack([forward_model(t) for t in theta_pred_unnorm])
+                # transform to get in the scale of data
+                y_pred_norm = data_normalizer.transform(y_pred_unnorm)
                 
                 # Compute the loss
-                loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, data, data , mu, logvar, 
-                                                    beta= epoch_beta)
+                loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
+                                                                                  mu, logvar, beta=epoch_beta)
                 
                 # Backward pass
                 loss.backward()
@@ -157,8 +179,9 @@ class CVAE(ModelBase):
             avg_misfit_loss = total_misfit_loss / len(train_loader.dataset)
             avg_kl_div = total_kl_div / len(train_loader.dataset)
             print(f'Epoch [{epoch+1}/{epochs}], Beta: {epoch_beta:.4f}, Average Loss: {avg_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Misfit Loss: {avg_misfit_loss:.4f}, KL Div: {avg_kl_div:.4f}')
-            
 
+
+    
     @staticmethod
     def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
         """
@@ -177,3 +200,47 @@ class CVAE(ModelBase):
         if cycle_epoch < (cycle_length / num_cycles):
             return cycle_epoch / (cycle_length / num_cycles)  # Linearly increase
         return 1  # Remain at 1 for the rest of the cycle
+    
+    
+    def get_posterior(self, observed_data, num_samples=10000, latent_dim=None, device=None):
+        """
+        Get samples from the posterior distribution given observed data.
+
+        Parameters:
+        observed_data (torch.Tensor): Observed data to condition the generation on.
+        num_samples (int): Number of samples to generate from the posterior.
+        latent_dim (int, optional): Dimension of the latent space. Defaults to None, in which case it will be inferred from the model.
+        device (str, optional): Device to run the computations on. Defaults to None, in which case the current device is used.
+
+        Returns:
+        torch.Tensor: Samples from the posterior distribution.
+        """
+        if device is None:
+            device = next(self.parameters()).device
+
+        if latent_dim is None:
+            latent_dim = self.latent_dim
+        
+        # Set the network to evaluation mode
+        self.eval()
+
+        with torch.no_grad():  
+            observed_data = observed_data.to(device)
+            
+            mean = torch.zeros(latent_dim).to(device)
+            covariance = torch.eye(latent_dim).to(device)
+            m = torch.distributions.MultivariateNormal(mean, covariance_matrix=covariance)
+            
+            z = m.sample((num_samples,)).to(device)
+
+            y = observed_data.repeat(num_samples, 1)
+            
+            #zy = torch.cat((z, y), dim=1)
+            print(z.shape, y.shape)
+            posterior_samples = self.decoder(z,y)
+
+            # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
+
+        return posterior_samples
+    
+    
