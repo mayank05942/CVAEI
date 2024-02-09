@@ -5,11 +5,15 @@ from typing import List, Any, Tuple
 import numpy as np
 from .model_base import ModelBase
 
+
 class Encoder(nn.Module):
-    def __init__(self, input_dim: int, latent_dim: int, hidden_dims: List[int] = None, 
+    """
+    Implements the Encoder, learning expressive features
+    """
+    def __init__(self, input_dim: int, latent_dim: int, hidden_dims: List[int] = None,
                  activation_fn: nn.Module = nn.ReLU()):
         super(Encoder, self).__init__()
-        
+
         if hidden_dims is None:
             hidden_dims = [256, 256, 256]
 
@@ -21,7 +25,7 @@ class Encoder(nn.Module):
             input_dim = h_dim  # Set input dimension for the next layer
 
         self.layers = nn.Sequential(*modules)
-        
+
         # Output layers for mean and log variance
         self.fc_mean = nn.Linear(hidden_dims[-1], latent_dim)
         self.fc_logvar = nn.Linear(hidden_dims[-1], latent_dim)
@@ -32,14 +36,16 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, latent_dim: int, output_dim: int, conditional_dim: int, 
+    """
+    Implements the Decoder, mapping features to data
+    """
+    def __init__(self, latent_dim: int, output_dim: int, conditional_dim: int,
                  hidden_dims: List[int] = None, activation_fn: nn.Module = nn.ReLU()):
         super(Decoder, self).__init__()
         self.conditional_dim = conditional_dim
-        
+
         # Adjust latent_dim to account for concatenated conditional data
         adjusted_latent_dim = latent_dim + conditional_dim
-        
 
         if hidden_dims is None:
             hidden_dims = [256, 256, 256]
@@ -63,25 +69,27 @@ class Decoder(nn.Module):
         return self.final_layer(h)
 
 
-
 class CVAE(ModelBase):
-    def __init__(self, input_dim, latent_dim, output_dim, conditional_dim, 
-                 encoder_hidden_dims: List[int], decoder_hidden_dims: List[int], 
+    """
+    Defines the Conditional Variational Autoencoder.
+    Implements the definition, training and prediction pipeline.
+    """
+    def __init__(self, input_dim, latent_dim, output_dim, conditional_dim,
+                 encoder_hidden_dims: List[int], decoder_hidden_dims: List[int],
                  activation_fn: nn.Module = nn.ReLU()):
-        
+
         super(CVAE, self).__init__()
 
         self.latent_dim = latent_dim
         self.input_dim = input_dim
-        self.conditional_dim =  conditional_dim
+        self.conditional_dim = conditional_dim
 
-        self.encoder = Encoder(input_dim=input_dim, latent_dim=latent_dim, 
+        self.encoder = Encoder(input_dim=input_dim, latent_dim=latent_dim,
                                hidden_dims=encoder_hidden_dims, activation_fn=activation_fn)
-        self.decoder = Decoder(latent_dim=latent_dim, output_dim=output_dim, 
-                               conditional_dim=conditional_dim, hidden_dims=decoder_hidden_dims, 
+        self.decoder = Decoder(latent_dim=latent_dim, output_dim=output_dim,
+                               conditional_dim=conditional_dim, hidden_dims=decoder_hidden_dims,
                                activation_fn=activation_fn)
 
-   
     def encode(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.encoder(input)
 
@@ -98,31 +106,30 @@ class CVAE(ModelBase):
         z = self.reparameterize(mu, logvar)
         return self.decode(z, conditional_data), mu, logvar
 
-    
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
         # Reconstruction loss compares the input x to its reconstruction x_hat
         recon_loss = F.mse_loss(x_hat, x, reduction='sum')
-        
+
         # Misfit loss compares the actual y to the predicted y_hat
         misfit_loss = F.mse_loss(y_hat, y, reduction='sum')
-        
-        #misfit_loss = recon_loss
-        
+
+        # misfit_loss = recon_loss
+
         # KL divergence loss
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-        
+
         # Total loss
         total_loss = recon_loss + misfit_loss + beta * kl_div
-        
-        return total_loss, recon_loss, misfit_loss, kl_div, beta
-    
 
-    def train_model(self, train_loader, optimizer, epochs=10, 
-                    cycle_length=10, num_cycles=1, device=None, 
+        return total_loss, recon_loss, misfit_loss, kl_div, beta
+
+    def train_model(self, train_loader, optimizer, epochs=10,
+                    cycle_length=10, num_cycles=1, device=None,
                     theta_normalizer=None, data_normalizer=None, forward_model=None):
 
         if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu")
 
         if device.type == 'cuda':
             print(f"Using GPU: {torch.cuda.get_device_name(device)}")
@@ -133,40 +140,45 @@ class CVAE(ModelBase):
         self.train()  # Set the model to training mode
 
         if theta_normalizer is None or data_normalizer is None or forward_model is None:
-            raise ValueError("theta_normalizer, data_normalizer, and forward_model must be provided")
+            raise ValueError(
+                "theta_normalizer, data_normalizer, and forward_model must be provided")
 
         for epoch in range(epochs):
             total_loss = 0
             total_recon_loss = 0
             total_misfit_loss = 0
             total_kl_div = 0
-            epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+            epoch_beta = self.calculate_beta(
+                epoch, epochs, cycle_length, num_cycles)
 
             for batch_idx, (data, theta) in enumerate(train_loader):
                 data, theta = data.to(device), theta.to(device)
 
                 optimizer.zero_grad()
-                
+
                 # Forward pass
                 theta_pred, mu, logvar = self(theta, data)
 
                 # de-normalize theta predicted
-                theta_pred_unnorm = theta_normalizer.inverse_transform(theta_pred)
+                theta_pred_unnorm = theta_normalizer.inverse_transform(
+                    theta_pred)
 
                 # Pass through the model
 
-                y_pred_unnorm  = torch.stack([forward_model(t) for t in theta_pred_unnorm])
+                y_pred_unnorm = torch.stack(
+                    [forward_model(t) for t in theta_pred_unnorm])
                 # transform to get in the scale of data
-                y_pred_norm = data_normalizer.transform(y_pred_unnorm).to(device)
-                
+                y_pred_norm = data_normalizer.transform(
+                    y_pred_unnorm).to(device)
+
                 # Compute the loss
                 loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
-                                                                                  mu, logvar, beta=epoch_beta)
-                
+                                                                                 mu, logvar, beta=epoch_beta)
+
                 # Backward pass
                 loss.backward()
                 optimizer.step()
-                
+
                 total_loss += loss.item()
                 total_recon_loss += recon_loss.item()
                 total_misfit_loss += misfit_loss.item()
@@ -179,8 +191,6 @@ class CVAE(ModelBase):
             avg_kl_div = total_kl_div / len(train_loader.dataset)
             print(f'Epoch [{epoch+1}/{epochs}], Beta: {epoch_beta:.4f}, Average Loss: {avg_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Misfit Loss: {avg_misfit_loss:.4f}, KL Div: {avg_kl_div:.4f}')
 
-
-    
     @staticmethod
     def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
         """
@@ -197,10 +207,10 @@ class CVAE(ModelBase):
         """
         cycle_epoch = epoch % cycle_length
         if cycle_epoch < (cycle_length / num_cycles):
-            return cycle_epoch / (cycle_length / num_cycles)  # Linearly increase
+            # Linearly increase
+            return cycle_epoch / (cycle_length / num_cycles)
         return 1  # Remain at 1 for the rest of the cycle
-    
-    
+
     def get_posterior(self, observed_data, num_samples=10000, latent_dim=None, device=None):
         """
         Get samples from the posterior distribution given observed data.
@@ -219,27 +229,26 @@ class CVAE(ModelBase):
 
         if latent_dim is None:
             latent_dim = self.latent_dim
-        
+
         # Set the network to evaluation mode
         self.eval()
 
-        with torch.no_grad():  
+        with torch.no_grad():
             observed_data = observed_data.to(device)
-            
+
             mean = torch.zeros(latent_dim).to(device)
             covariance = torch.eye(latent_dim).to(device)
-            m = torch.distributions.MultivariateNormal(mean, covariance_matrix=covariance)
-            
+            m = torch.distributions.MultivariateNormal(
+                mean, covariance_matrix=covariance)
+
             z = m.sample((num_samples,)).to(device)
 
             y = observed_data.repeat(num_samples, 1)
-            
-            #zy = torch.cat((z, y), dim=1)
+
+            # zy = torch.cat((z, y), dim=1)
             print(z.shape, y.shape)
-            posterior_samples = self.decoder(z,y)
+            posterior_samples = self.decoder(z, y)
 
             # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
 
         return posterior_samples
-    
-    
