@@ -1,0 +1,1 @@
+from .ma2_model import MovingAverage2

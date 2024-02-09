@@ -1,6 +1,7 @@
 import torch
 from cvaei.helper import DataNormalizer
 
+
 class MovingAverage2:
     def __init__(self, true_params=None):
         """
@@ -10,18 +11,18 @@ class MovingAverage2:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
         if true_params is None:
-            self.true_params = torch.tensor([0.6, 0.5]) 
+            self.true_params = torch.tensor([0.6, 0.5])
         else:
             self.true_params = true_params
 
     def simulator(self, param, seed=42):
         """
         Simulate data using the MA2 model.
-        
+
         Parameters:
         - param (torch.Tensor): The parameters for the MA2 model.
         - seed (int): Seed for random number generation to ensure reproducibility.
-        
+
         Returns:
         - torch.Tensor: Simulated data based on the MA2 model.
         """
@@ -72,7 +73,7 @@ class MovingAverage2:
         theta = self.prior(num_samples=num_samples)
         data = torch.stack([self.simulator(t) for t in theta])
         return theta, data
-    
+
     def prepare_data(self, num_samples=1000):
         """
         Generate, normalize data and parameters, and return them with their normalizers.
