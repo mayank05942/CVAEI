@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 def scatter_plot_ma2(data):
     """
@@ -34,4 +35,38 @@ def scatter_plot_ma2(data):
     plt.legend()
 
     # Show the plot
+    plt.show()
+
+
+def scatter_plot(tensor):
+    """
+    Plots a scatter plot from a 1D or 2D PyTorch tensor.
+    
+    Parameters:
+    - tensor: A 1D or 2D PyTorch tensor. If 2D, columns represent different dimensions.
+    """
+    if not isinstance(tensor, torch.Tensor):
+        raise ValueError("Input must be a PyTorch tensor.")
+        
+    if tensor.ndim > 2:
+        raise ValueError("Function supports up to 2D tensors only.")
+    
+    tensor = tensor.cpu().detach()  # Ensure tensor is on CPU and detached from the computation graph
+    
+    plt.figure(figsize=(8, 6))
+    
+    if tensor.ndim == 1:
+        # For 1D tensors, plot values against their index
+        plt.scatter(torch.arange(len(tensor)), tensor, alpha=0.6, edgecolors='w', label='Data Points')
+    elif tensor.ndim == 2:
+        # For 2D tensors, plot column 0 vs column 1
+        if tensor.size(1) < 2:
+            raise ValueError("2D tensors must have at least 2 columns.")
+        plt.scatter(tensor[:, 0], tensor[:, 1], alpha=0.6, edgecolors='w', label='Data Points')
+    
+    plt.title('Scatter Plot of Tensor Data')
+    plt.xlabel('Dimension 1' if tensor.ndim == 2 else 'Index')
+    plt.ylabel('Dimension 2' if tensor.ndim == 2 else 'Value')
+    plt.legend()
+    plt.grid(True)
     plt.show()
