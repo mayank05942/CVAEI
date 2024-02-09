@@ -1,7 +1,7 @@
 import torch
 from cvaei.helper import DataNormalizer
 
-class MA2:
+class MovingAverage2:
     def __init__(self, true_params=None):
         """
         Initialize the MA2 model with optional true parameters.
