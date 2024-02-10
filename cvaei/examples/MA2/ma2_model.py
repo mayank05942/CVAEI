@@ -1,5 +1,6 @@
 import torch
 from cvaei.helper import DataNormalizer
+import matplotlib.pyplot as plt
 
 
 class MovingAverage2:
@@ -14,6 +15,10 @@ class MovingAverage2:
             self.true_params = torch.tensor([0.6, 0.5])
         else:
             self.true_params = true_params
+
+        self.theta_normalizer = None
+        self.data_normalizer = None
+
 
     def simulator(self, param, seed=42):
         """
@@ -74,28 +79,124 @@ class MovingAverage2:
         data = torch.stack([self.simulator(t) for t in theta])
         return theta, data
 
-    def prepare_data(self, num_samples=1000):
+    def prepare_data(self, num_samples=1000, scale=True):
         """
-        Generate, normalize data and parameters, and return them with their normalizers.
+        Generate, (optionally) normalize data and parameters, and return them with their normalizers.
 
         Parameters:
-        - num_samples (int): Number of samples to generate and normalize.
+        - num_samples (int): Number of samples to generate and (optionally) normalize.
+        - scale (bool): If True, return normalized data; otherwise, return unnormalized data.
 
         Returns:
-        - Tuple containing normalized theta, normalized data, theta normalizer, and data normalizer.
+        - Tuple containing (optionally normalized) theta, (optionally normalized) data, 
+        theta normalizer, and data normalizer.
         """
         # Generate data
         theta, data = self.generate_data(num_samples=num_samples)
 
         # Initialize normalizers
-        theta_normalizer = DataNormalizer()
-        data_normalizer = DataNormalizer()
+        self.theta_normalizer = DataNormalizer()
+        self.data_normalizer = DataNormalizer()
 
-        # Fit and transform thetas and data
-        theta_normalizer.fit(theta)
-        train_theta_norm = theta_normalizer.transform(theta)
+        if scale:
+            # Fit and transform thetas and data if scale is True
+            self.theta_normalizer.fit(theta)
+            theta_norm = self.theta_normalizer.transform(theta)
 
-        data_normalizer.fit(data)
-        train_data_norm = data_normalizer.transform(data)
+            self.data_normalizer.fit(data)
+            data_norm = self.data_normalizer.transform(data)
 
-        return train_theta_norm, train_data_norm, theta_normalizer, data_normalizer
+            return theta_norm, data_norm, self.theta_normalizer, self.data_normalizer
+        else:
+            # Return the original data without transformation if scale is False
+            return theta, data
+
+    def observed_data(self, true_params=None):
+        """
+        Generate observed data based on true parameters and return the normalized observed data.
+
+        Parameters:
+        - true_params (torch.Tensor, optional): True parameters to simulate the observed data. If not provided, use the class's true_params attribute.
+
+        Returns:
+        - torch.Tensor: Normalized observed data.
+        """
+        if true_params is None:
+            true_params = self.true_params
+
+        # Ensure that normalizers are available
+        if self.theta_normalizer is None or self.data_normalizer is None:
+            raise ValueError("Normalizers have not been initialized. Call prepare_data first.")
+
+        # Simulate observed data with true parameters
+        observed_data = self.simulator(true_params)
+
+        # Normalize the observed data using the previously fit data normalizer
+        observed_data_norm = self.data_normalizer.transform(observed_data.unsqueeze(0))
+
+        return observed_data_norm
+    
+    def plot_prior(self, params):
+        """
+        Plot a scatter plot of parameters.
+
+        Parameters:
+        - params (torch.Tensor): Tensor of parameters, where each row is a set of parameters.
+        """
+        params = params.cpu().numpy()
+        plt.figure(figsize=(10, 5))
+        plt.scatter(params[:, 0], params[:, 1], alpha=0.5)
+        plt.title('Scatter Plot of Parameters')
+        plt.xlabel('Parameter 1')
+        plt.ylabel('Parameter 2')
+        plt.grid(True)
+        plt.show()
+
+    def plot_observation(self, observations, num_samples=5):
+        """
+        Plot overlapping time series of observations.
+
+        Parameters:
+        - observations (torch.Tensor): Tensor of observed data, each row is a time series.
+        - num_samples (int): Number of samples to consider for plotting.
+        """
+        # Ensure we don't try to plot more samples than available
+        observations = observations.cpu().numpy()
+        num_samples = min(num_samples, observations.shape[0])
+
+        plt.figure(figsize=(10, 5))
+        for i in range(num_samples):
+            plt.plot(observations[i], alpha=0.7)
+
+        plt.title(f'Overlapping Time Series of Observed Data for {num_samples} Samples')
+        plt.xlabel('Time Step')
+        plt.ylabel('Observed Value')
+        plt.grid(True)
+        plt.show()
+
+    def check_normalizer(self):
+        """
+        Checks if the normalizer properly normalizes and denormalizes the data.
+        """
+        # Sample 100 points from the prior
+        sampled_params = self.prior(num_samples=100)
+        
+        # Generate observed data using the simulator
+        observed_data = torch.stack([self.simulator(params) for params in sampled_params])
+
+        # Normalize the sampled parameters and observed data
+        sampled_params_norm = self.theta_normalizer.transform(sampled_params)
+        observed_data_norm = self.data_normalizer.transform(observed_data)
+
+        # Denormalize the normalized data
+        sampled_params_denorm = self.theta_normalizer.inverse_transform(sampled_params_norm)
+        observed_data_denorm = self.data_normalizer.inverse_transform(observed_data_norm)
+
+        # Compare the original and denormalized data
+        params_check = torch.allclose(sampled_params, sampled_params_denorm, atol=1e-5)
+        data_check = torch.allclose(observed_data, observed_data_denorm, atol=1e-5)
+
+        if params_check and data_check:
+            print("Normalization and denormalization process is consistent for both parameters and observed data.")
+        else:
+            print("There is a discrepancy in the normalization and denormalization process.")
