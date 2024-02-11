@@ -201,71 +201,74 @@ class MovingAverage2:
         else:
             print("There is a discrepancy in the normalization and denormalization process.")
 
-    
-    def plot_posterior(self, posterior):
+
+    def plot_posterior(self, posterior, true_params=None):
         """
         Creates a scatter plot with a triangular prior indicated by dotted lines and scatter points for estimates.
+        Adds dotted lines to indicate the true parameter values.
 
         :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
+        :param true_params: A list or array with the true parameter values [Theta 1, Theta 2].
         """
-        # Convert the tensor to a NumPy array for plotting
-        data = posterior.cpu().numpy()
 
-        # Define the corners of the triangular prior
-        triangle_corners = np.array([[-2, 1], [2, 1], [0, -1]])
+        if true_params is None:
+            true_params = self.true_params.numpy()
+
+        # Convert tensor to NumPy array for plotting
+        data = posterior.cpu().numpy()
 
         # Create the scatter plot
         plt.figure(figsize=(10, 5))
-        plt.scatter(data[:, 0], data[:, 1], alpha=1,  s=100.5, label='Estimated Posterior')
+        plt.scatter(data[:, 0], data[:, 1], alpha=0.5, label='Estimated Posterior')
 
-        # Draw the triangle with dashed lines
-        plt.plot([triangle_corners[0][0], triangle_corners[1][0]], [triangle_corners[0][1], triangle_corners[1][1]], 'k--', label='Prior')
+        # Draw the triangular prior
+        triangle_corners = np.array([[-2, 1], [2, 1], [0, -1]])
+        plt.plot([triangle_corners[0][0], triangle_corners[1][0]], [triangle_corners[0][1], triangle_corners[1][1]], 'k--')
         plt.plot([triangle_corners[1][0], triangle_corners[2][0]], [triangle_corners[1][1], triangle_corners[2][1]], 'k--')
         plt.plot([triangle_corners[2][0], triangle_corners[0][0]], [triangle_corners[2][1], triangle_corners[0][1]], 'k--')
 
-        plt.scatter([0.6], [0.2], color='red', s=100, label='True Value', zorder=5)
+        # Plot the true value with dotted lines indicating its position
+        plt.scatter([true_params[0]], [true_params[1]], color='red', s=50, label='True Value')
+        plt.axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
+        plt.axhline(y=true_params[1], color='red', linestyle='--', linewidth=1)
 
-        # Set the axes limits
+        # Set the axes limits and labels
         plt.xlim(-2, 2)
         plt.ylim(-1, 1)
-
-        # Add labels and title
         plt.xlabel('Theta 1')
         plt.ylabel('Theta 2')
         plt.title('VAE: Posterior MA2')
-        
-        # Add legend
         plt.legend()
-
-        # Show the plot
+        #plt.grid(True)
         plt.show()
 
-    def posterior_hist(self, posterior):
+    def posterior_hist(self, posterior, true_params=None):
         """
         Plots histograms of the posterior parameters.
 
         :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
         """
-        # Convert the tensor to a NumPy array for plotting
-        data = posterior.numpy()
+        if true_params is None:
+            true_params = self.true_params.numpy()
+
+        # Convert tensor to NumPy array for plotting
+        data = posterior.cpu().numpy()
 
         # Create histograms for each parameter
-        plt.figure(figsize=(12, 5))
+        fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
-        # Theta 1
-        plt.subplot(1, 2, 1)
-        plt.hist(data[:, 0], bins=30, alpha=0.7)
-        plt.title('Histogram of Theta 1')
-        plt.xlabel('Theta 1')
-        plt.ylabel('Frequency')
+        # Histogram of Theta 1
+        axs[0].hist(data[:, 0], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        axs[0].axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
+        axs[0].set_title('Histogram of Theta 1')
+        axs[0].set_xlabel('Theta 1')
+        axs[0].set_ylabel('Frequency')
 
-        # Theta 2
-        plt.subplot(1, 2, 2)
-        plt.hist(data[:, 1], bins=30, alpha=0.7)
-        plt.title('Histogram of Theta 2')
-        plt.xlabel('Theta 2')
+        # Histogram of Theta 2
+        axs[1].hist(data[:, 1], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        axs[1].axvline(x=true_params[1], color='red', linestyle='--', linewidth=1)
+        axs[1].set_title('Histogram of Theta 2')
+        axs[1].set_xlabel('Theta 2')
 
-        # Show the plot
         plt.tight_layout()
         plt.show()
-

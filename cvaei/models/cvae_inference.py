@@ -6,8 +6,6 @@ import numpy as np
 from .model_base import ModelBase
 import matplotlib.pyplot as plt
 
-
-
 class Encoder(nn.Module):
     """
     Implements the Encoder, learning expressive features
