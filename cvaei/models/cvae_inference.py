@@ -4,6 +4,8 @@ from torch.nn import functional as F
 from typing import List, Any, Tuple
 import numpy as np
 from .model_base import ModelBase
+import matplotlib.pyplot as plt
+
 
 
 class Encoder(nn.Module):
@@ -84,6 +86,9 @@ class CVAE(ModelBase):
         self.input_dim = input_dim
         self.conditional_dim = conditional_dim
 
+        self.losses = {'total_loss': [], 'recon_loss': [], 'misfit_loss': [], 'kl_div': []}
+
+
         self.encoder = Encoder(input_dim=input_dim, latent_dim=latent_dim,
                                hidden_dims=encoder_hidden_dims, activation_fn=activation_fn)
         self.decoder = Decoder(latent_dim=latent_dim, output_dim=output_dim,
@@ -113,8 +118,6 @@ class CVAE(ModelBase):
         # Misfit loss compares the actual y to the predicted y_hat
         misfit_loss = F.mse_loss(y_hat, y, reduction='sum')
 
-        # misfit_loss = recon_loss
-
         # KL divergence loss
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
@@ -127,11 +130,7 @@ class CVAE(ModelBase):
                     cycle_length=10, num_cycles=1, device=None,
                     theta_normalizer=None, data_normalizer=None, forward_model=None):
 
-        if device is None:
-            device = torch.device(
-                "cuda" if torch.cuda.is_available() else "cpu")
-
-        if device.type == 'cuda':
+        if device.type.startswith('cuda'):
             print(f"Using GPU: {torch.cuda.get_device_name(device)}")
         else:
             print("Using CPU")
@@ -144,10 +143,9 @@ class CVAE(ModelBase):
                 "theta_normalizer, data_normalizer, and forward_model must be provided")
 
         for epoch in range(epochs):
-            total_loss = 0
-            total_recon_loss = 0
-            total_misfit_loss = 0
-            total_kl_div = 0
+
+            epoch_losses = {'total_loss': 0, 'recon_loss': 0, 'misfit_loss': 0, 'kl_div': 0}
+
             epoch_beta = self.calculate_beta(
                 epoch, epochs, cycle_length, num_cycles)
 
@@ -167,9 +165,12 @@ class CVAE(ModelBase):
 
                 y_pred_unnorm = torch.stack(
                     [forward_model(t) for t in theta_pred_unnorm])
+                
                 # transform to get in the scale of data
                 y_pred_norm = data_normalizer.transform(
                     y_pred_unnorm).to(device)
+                
+                #y_pred_norm = data
 
                 # Compute the loss
                 loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
@@ -179,18 +180,20 @@ class CVAE(ModelBase):
                 loss.backward()
                 optimizer.step()
 
-                total_loss += loss.item()
-                total_recon_loss += recon_loss.item()
-                total_misfit_loss += misfit_loss.item()
-                total_kl_div += kl_div.item()
+                epoch_losses['total_loss'] += loss.item()
+                epoch_losses['recon_loss'] += recon_loss.item()
+                epoch_losses['misfit_loss'] += misfit_loss.item()
+                epoch_losses['kl_div'] += kl_div.item()
 
-            # Print average loss for the epoch
-            avg_loss = total_loss / len(train_loader.dataset)
-            avg_recon_loss = total_recon_loss / len(train_loader.dataset)
-            avg_misfit_loss = total_misfit_loss / len(train_loader.dataset)
-            avg_kl_div = total_kl_div / len(train_loader.dataset)
-            print(f'Epoch [{epoch+1}/{epochs}], Beta: {epoch_beta:.4f}, Average Loss: {avg_loss:.4f}, Recon Loss: {avg_recon_loss:.4f}, Misfit Loss: {avg_misfit_loss:.4f}, KL Div: {avg_kl_div:.4f}')
+            # Log epoch-wise average loss
+            for key in epoch_losses:
+                self.losses[key].append(epoch_losses[key] / len(train_loader.dataset))
+            
+            print(f'Epoch {epoch+1}/{epochs}, Beta: {epoch_beta:.1f}, Total Loss: {epoch_losses["total_loss"]:.4f}, ' +
+                  f'Recon Loss: {epoch_losses["recon_loss"]:.4f}, Misfit Loss: {epoch_losses["misfit_loss"]:.4f}, ' +
+                  f'KL Div: {epoch_losses["kl_div"]:.4f}')
 
+ 
     @staticmethod
     def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
         """
@@ -246,9 +249,25 @@ class CVAE(ModelBase):
             y = observed_data.repeat(num_samples, 1)
 
             # zy = torch.cat((z, y), dim=1)
-            print(z.shape, y.shape)
             posterior_samples = self.decoder(z, y)
 
             # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
 
         return posterior_samples
+    
+    def plot_loss(self):
+        """Plot the training losses in separate plots for detailed analysis."""
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))  # Create a 2x2 grid of plots
+        axes = axes.flatten()  # Flatten the grid to make it easier to iterate
+        loss_titles = ['Total Loss', 'Reconstruction Loss', 'Misfit Loss', 'KL Divergence']
+        
+        for i, key in enumerate(['total_loss', 'recon_loss', 'misfit_loss', 'kl_div']):
+            axes[i].plot(self.losses[key], label=key, linewidth=2)
+            axes[i].set_title(loss_titles[i])
+            axes[i].set_xlabel('Epochs')
+            axes[i].set_ylabel('Loss')
+            axes[i].legend()
+            axes[i].grid(True)
+        
+        plt.tight_layout()
+        plt.show()
