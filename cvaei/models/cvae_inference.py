@@ -168,6 +168,10 @@ class CVAE(ModelBase):
                 y_pred_norm = data_normalizer.transform(
                     y_pred_unnorm).to(device)
                 
+                if y_pred_norm.dim() == 3:
+                    # Reshape y_pred to match y, case when [N, 1, 1000]
+                    y_pred_norm = y_pred_norm.squeeze(1)
+                
                 # Compute the loss
                 loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
                                                                                  mu, logvar, beta=epoch_beta)
@@ -229,6 +233,10 @@ class CVAE(ModelBase):
         if latent_dim is None:
             latent_dim = self.latent_dim
 
+        if observed_data.dim() == 3:
+            # Reshape y_pred to match y, case when [N, 1, 1000]
+            observed_data = observed_data.squeeze(1)
+
         # Set the network to evaluation mode
         self.eval()
 
@@ -241,7 +249,7 @@ class CVAE(ModelBase):
                 mean, covariance_matrix=covariance)
 
             z = m.sample((num_samples,)).to(device)
-
+            
             y = observed_data.repeat(num_samples, 1)
 
             # zy = torch.cat((z, y), dim=1)
