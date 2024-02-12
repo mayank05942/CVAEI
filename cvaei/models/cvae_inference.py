@@ -168,8 +168,6 @@ class CVAE(ModelBase):
                 y_pred_norm = data_normalizer.transform(
                     y_pred_unnorm).to(device)
                 
-                #y_pred_norm = data
-
                 # Compute the loss
                 loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(theta_pred, theta, y_pred_norm, data,
                                                                                  mu, logvar, beta=epoch_beta)
