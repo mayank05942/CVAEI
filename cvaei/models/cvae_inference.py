@@ -161,8 +161,12 @@ class CVAE(ModelBase):
 
                 # Pass through the model
 
-                y_pred_unnorm = torch.stack(
-                    [forward_model(t) for t in theta_pred_unnorm])
+                
+                y_pred_unnorm = forward_model(theta_pred_unnorm, seed=42, device=device)
+
+
+                # y_pred_unnorm = torch.stack(
+                #     [forward_model(t) for t in theta_pred_unnorm])
                 
                 # transform to get in the scale of data
                 y_pred_norm = data_normalizer.transform(

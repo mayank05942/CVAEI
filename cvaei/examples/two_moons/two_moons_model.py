@@ -21,39 +21,37 @@ class TwoMoons:
         self.theta_normalizer = None
         self.data_normalizer = None
 
-
-    def simulator(self, param, seed=42, device = None):
+    def simulator(self, params, seed=42, device=None):
         """
-        Simulate data using the Two moons model.
+        Simulate data using the Two moons model for a batch of parameters.
 
         Parameters:
-        - param (torch.Tensor): The parameters for the two moons model.
+        - params (torch.Tensor): The batch of parameters for the two moons model. Shape: [batch_size, param_dim]
         - seed (int): Seed for random number generation to ensure reproducibility.
+        - device (torch.device): The device to perform computations on.
 
         Returns:
-        - torch.Tensor: Simulated data based on the two moons model.
+        - torch.Tensor: Simulated data based on the two moons model for each set of parameters in the batch.
         """
         if seed is not None:
             torch.manual_seed(seed)
 
-        # Set the device for computations
+        if params.dim() == 1:
+            params = params.unsqueeze(0)  
+    
         device = device or torch.device("cpu")
+        params = params.to(device)
 
-        param = param.to(device)
+        batch_size = params.shape[0]
+        alpha = torch.empty(batch_size, 1, device=device).uniform_(-0.5 * np.pi, 0.5 * np.pi)
+        r = torch.empty(batch_size, 1, device=device).normal_(mean=0.1, std=0.01)
 
-        # Generate noise
-        alpha = torch.empty(1, device=device).uniform_(-0.5 * np.pi, 0.5 * np.pi)
-        r = torch.empty(1, device=device).normal_(mean=0.1, std=0.01)
-
-        # Forward process
-        rhs1 = torch.tensor([r * torch.cos(alpha) + 0.25, r * torch.sin(alpha)], device=device)
-        rhs2 = torch.tensor(
-            [
-                -torch.abs(param[0] + param[1]) / torch.sqrt(torch.tensor(2.0, device=device)),
-                (-param[0] + param[1]) / torch.sqrt(torch.tensor(2.0, device=device)),
-            ],
-            device=device
-        )
+        rhs1 = torch.cat((r * torch.cos(alpha) + 0.25, r * torch.sin(alpha)), dim=1)
+        
+        rhs2 = torch.stack([
+            -torch.abs(params[:, 0] + params[:, 1]) / torch.sqrt(torch.tensor(2.0, device=device)),
+            (-params[:, 0] + params[:, 1]) / torch.sqrt(torch.tensor(2.0, device=device))
+        ], dim=1)
 
         return rhs1 + rhs2
 
@@ -86,7 +84,7 @@ class TwoMoons:
         device = device or torch.device("cpu")
 
         theta = self.prior(num_samples=num_samples, device = device)
-        data = torch.stack([self.simulator(t, seed =42, device = device) for t in theta])
+        data = self.simulator(theta, seed =42, device = device)
         return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True):
@@ -175,7 +173,9 @@ class TwoMoons:
         sampled_params = self.prior(num_samples=100)
         
         # Generate observed data using the simulator
-        observed_data = torch.stack([self.simulator(params) for params in sampled_params])
+        observed_data = self.simulator(sampled_params)
+
+        #observed_data = torch.stack([self.simulator(params) for params in sampled_params])
 
         # Normalize the sampled parameters and observed data
         sampled_params_norm = self.theta_normalizer.transform(sampled_params)
