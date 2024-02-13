@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from cvaei.helper import DataNormalizer
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 class MovingAverage2:
@@ -287,9 +288,41 @@ class MovingAverage2:
         #plt.grid(True)
         plt.show()
 
-    def posterior_hist(self, posterior, true_params=None):
+    # def posterior_hist(self, posterior, true_params=None):
+    #     """
+    #     Plots histograms of the posterior parameters.
+
+    #     :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
+    #     """
+    #     if true_params is None:
+    #         true_params = self.true_params.numpy()
+
+    #     # Convert tensor to NumPy array for plotting
+    #     data = posterior.cpu().numpy()
+
+    #     # Create histograms for each parameter
+    #     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+
+    #     # Histogram of Theta 1
+    #     axs[0].hist(data[:, 0], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+    #     axs[0].axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
+    #     axs[0].set_title('Histogram of Theta 1')
+    #     axs[0].set_xlabel('Theta 1')
+    #     axs[0].set_ylabel('Frequency')
+
+    #     # Histogram of Theta 2
+    #     axs[1].hist(data[:, 1], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+    #     axs[1].axvline(x=true_params[1], color='red', linestyle='--', linewidth=1)
+    #     axs[1].set_title('Histogram of Theta 2')
+    #     axs[1].set_xlabel('Theta 2')
+
+    #     plt.tight_layout()
+    #     plt.show()
+
+
+    def posterior_kde(self, posterior, true_params=None):
         """
-        Plots histograms of the posterior parameters.
+        Plots KDE of the posterior parameters.
 
         :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
         """
@@ -299,20 +332,20 @@ class MovingAverage2:
         # Convert tensor to NumPy array for plotting
         data = posterior.cpu().numpy()
 
-        # Create histograms for each parameter
+        # Create KDE plots for each parameter
         fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
-        # Histogram of Theta 1
-        axs[0].hist(data[:, 0], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        # KDE of Theta 1
+        sns.kdeplot(data[:, 0], ax=axs[0], fill=True, color='skyblue', edgecolor='black')
         axs[0].axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
-        axs[0].set_title('Histogram of Theta 1')
+        axs[0].set_title('KDE of Theta 1')
         axs[0].set_xlabel('Theta 1')
-        axs[0].set_ylabel('Frequency')
+        axs[0].set_ylabel('Density')
 
-        # Histogram of Theta 2
-        axs[1].hist(data[:, 1], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        # KDE of Theta 2
+        sns.kdeplot(data[:, 1], ax=axs[1], fill=True, color='skyblue', edgecolor='black')
         axs[1].axvline(x=true_params[1], color='red', linestyle='--', linewidth=1)
-        axs[1].set_title('Histogram of Theta 2')
+        axs[1].set_title('KDE of Theta 2')
         axs[1].set_xlabel('Theta 2')
 
         plt.tight_layout()
