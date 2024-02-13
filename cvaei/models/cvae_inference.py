@@ -191,7 +191,7 @@ class CVAE(ModelBase):
                 
             # At the end of each epoch, after accumulating the losses
             for key in epoch_losses:
-                epoch_losses[key] /= len(train_loader)  #  average per batch
+                epoch_losses[key] /= len(train_loader.dataset)  #  average per epoch
                 self.losses[key].append(epoch_losses[key])  
 
             print(f'Epoch {epoch+1}/{epochs}, Beta: {epoch_beta:.1f}, Total Loss: {epoch_losses["total_loss"]:.4f}, ' +
