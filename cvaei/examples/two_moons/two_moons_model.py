@@ -195,28 +195,29 @@ class TwoMoons:
             print("There is a discrepancy in the normalization and denormalization process.")
 
     
-    def analytic_posterior(self, x_o = None, n_samples=10000, device = None):
+    def analytic_posterior(self, x_o=None, n_samples=10000, device=None):
         """
         Compute the analytic posterior for given observed data.
         """
-        x_o = self.obs_data if x_o is None else x_o
-
         device = device or torch.device("cpu")
-            
-        ang = torch.tensor(-torch.pi / 4.0)
+        x_o = self.obs_data if x_o is None else x_o.to(device)
+
+        ang = torch.tensor(-torch.pi / 4.0, device=device)
         c = torch.cos(-ang)
         s = torch.sin(-ang)
 
-        theta = torch.zeros((n_samples, 2))
+        theta = torch.zeros((n_samples, 2), device=device)
 
         for i in range(n_samples):
-            p = self.simulator(torch.zeros(2), seed = None)
-            q = torch.zeros(2)
+            
+            p = self.simulator(torch.zeros(2), device=device, seed=None).squeeze(0)
+            q = torch.zeros(2, device=device)
 
+            # Adjust subtraction to ensure compatibility
             q[0] = p[0] - x_o[0]
             q[1] = x_o[1] - p[1]
 
-            if torch.rand(1) < 0.5:
+            if torch.rand(1, device=device) < 0.5:
                 q[0] = -q[0]
 
             theta[i, 0] = c * q[0] - s * q[1]

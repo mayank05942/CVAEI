@@ -144,8 +144,7 @@ class CVAE(ModelBase):
 
             epoch_losses = {'total_loss': 0, 'recon_loss': 0, 'misfit_loss': 0, 'kl_div': 0}
 
-            epoch_beta = self.calculate_beta(
-                epoch, epochs, cycle_length, num_cycles)
+            epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
 
             for batch_idx, (data, theta) in enumerate(train_loader):
                 data, theta = data.to(device), theta.to(device)
@@ -162,7 +161,7 @@ class CVAE(ModelBase):
                 # Pass through the model
 
                 
-                y_pred_unnorm = forward_model(theta_pred_unnorm, seed=42, device=device)
+                y_pred_unnorm = forward_model(theta_pred_unnorm, device=device)
 
 
                 # y_pred_unnorm = torch.stack(
@@ -189,10 +188,12 @@ class CVAE(ModelBase):
                 epoch_losses['misfit_loss'] += misfit_loss.item()
                 epoch_losses['kl_div'] += kl_div.item()
 
-            # Log epoch-wise average loss
+                
+            # At the end of each epoch, after accumulating the losses
             for key in epoch_losses:
-                self.losses[key].append(epoch_losses[key] / len(train_loader.dataset))
-            
+                epoch_losses[key] /= len(train_loader)  #  average per batch
+                self.losses[key].append(epoch_losses[key])  
+
             print(f'Epoch {epoch+1}/{epochs}, Beta: {epoch_beta:.1f}, Total Loss: {epoch_losses["total_loss"]:.4f}, ' +
                   f'Recon Loss: {epoch_losses["recon_loss"]:.4f}, Misfit Loss: {epoch_losses["misfit_loss"]:.4f}, ' +
                   f'KL Div: {epoch_losses["kl_div"]:.4f}')
@@ -265,6 +266,7 @@ class CVAE(ModelBase):
     
     def plot_loss(self):
         """Plot the training losses in separate plots for detailed analysis."""
+
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))  # Create a 2x2 grid of plots
         axes = axes.flatten()  # Flatten the grid to make it easier to iterate
         loss_titles = ['Total Loss', 'Reconstruction Loss', 'Misfit Loss', 'KL Divergence']
