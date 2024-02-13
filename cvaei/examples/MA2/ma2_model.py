@@ -47,7 +47,7 @@ class MovingAverage2:
     #         y[t] = x[t] + gy[t]
     #     return y
 
-    def simulator(self, params, seed=42, device=None):
+    def simulator(self, params, seed=42, n = 100, device=None):
         """
         Simulate data using the MA2 model for a batch of parameters.
 
@@ -55,6 +55,7 @@ class MovingAverage2:
         - params (torch.Tensor): The batch of parameters for the MA2 model.
         - seed (int): Seed for random number generation to ensure reproducibility.
         - device (torch.device): The device to perform computations on.
+        - n: Size of time series
 
         Returns:
         - torch.Tensor: Simulated data based on the MA2 model for each set of parameters in the batch.
@@ -72,7 +73,7 @@ class MovingAverage2:
 
         # Get batch size and sequence length
         batch_size, param_dim = params.size(0), params.size(1)
-        n = 100
+        
 
         # Generate random noise for all batches
         g = torch.randn(batch_size, n, device=device)
@@ -85,8 +86,8 @@ class MovingAverage2:
         # Simulate the MA2 process in a vectorized form
         for t in range(n):
             x[:, t] += g[:, t]
-            for p in range(1, min(t + 1, param_dim)):
-                x[:, t] += g[:, t - p] * params[:, p - 1]
+            for p in range(1, min(t + 1, param_dim + 1)):  
+                x[:, t] += g[:, t - p] * params[:, p - 1] if t - p >= 0 else 0  
             y[:, t] = x[:, t] + gy[:, t]
 
         return y
@@ -126,44 +127,75 @@ class MovingAverage2:
         #data = torch.stack([self.simulator(t) for t in theta])
         return theta, data
 
-    def prepare_data(self, num_samples=1000, scale=True):
+    def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
         Generate, (optionally) normalize data and parameters, and return them with their normalizers.
+        Optionally generates validation data of size 10,000. Prints the shape of all generated data.
 
         Parameters:
-        - num_samples (int): Number of samples to generate and (optionally) normalize.
+        - num_samples (int): Number of samples to generate and (optionally) normalize for training.
         - scale (bool): If True, return normalized data; otherwise, return unnormalized data.
+        - validation (bool): If True, also generate and return validation data of size 10,000.
 
         Returns:
-        - Tuple containing (optionally normalized) theta, (optionally normalized) data, 
-        theta normalizer, and data normalizer.
+        - Tuple containing (optionally normalized) training theta, training data,
+        theta normalizer, and data normalizer. If validation is True, also returns
+        (optionally normalized) validation theta and validation data.
         """
-        # Generate data
-        theta, data = self.generate_data(num_samples=num_samples)
+        # Generate training data
+        train_theta, train_data = self.generate_data(num_samples=num_samples)
 
         # Initialize normalizers
         self.theta_normalizer = DataNormalizer()
         self.data_normalizer = DataNormalizer()
 
         if scale:
-            # Fit and transform thetas and data if scale is True
-            self.theta_normalizer.fit(theta)
-            theta_norm = self.theta_normalizer.transform(theta)
-
-            self.data_normalizer.fit(data)
-            data_norm = self.data_normalizer.transform(data)
-
-            return theta_norm, data_norm, self.theta_normalizer, self.data_normalizer
+            # Normalize training data
+            self.theta_normalizer.fit(train_theta)
+            train_theta_norm = self.theta_normalizer.transform(train_theta)
+            self.data_normalizer.fit(train_data)
+            train_data_norm = self.data_normalizer.transform(train_data)
         else:
-            # Return the original data without transformation if scale is False
-            return theta, data
+            # Use unnormalized training data
+            train_theta_norm = train_theta
+            train_data_norm = train_data
+
+        print(f"Training Theta Shape: {train_theta_norm.shape}")
+        print(f"Training Data Shape: {train_data_norm.shape}")
+
+        return_values = (train_theta_norm, train_data_norm, self.theta_normalizer, self.data_normalizer)
+
+        if validation:
+            # Generate validation data
+            val_theta, val_data = self.generate_data(num_samples=10000)
+
+            if scale:
+                # Normalize validation data using the same normalizers as for the training data
+                val_theta_norm = self.theta_normalizer.transform(val_theta)
+                val_data_norm = self.data_normalizer.transform(val_data)
+            else:
+                # Use unnormalized validation data
+                val_theta_norm = val_theta
+                val_data_norm = val_data
+
+            print(f"Validation Theta Shape: {val_theta_norm.shape}")
+            print(f"Validation Data Shape: {val_data_norm.shape}")
+
+            # Extend return values to include validation data
+            return_values += (val_theta_norm, val_data_norm)
+
+        return return_values
+
+
+
 
     def observed_data(self, true_params=None):
         """
         Generate observed data based on true parameters and return the normalized observed data.
 
         Parameters:
-        - true_params (torch.Tensor, optional): True parameters to simulate the observed data. If not provided, use the class's true_params attribute.
+        - true_params (torch.Tensor, optional): True parameters to simulate the observed data. 
+           If not provided, use the class's true_params attribute.
 
         Returns:
         - torch.Tensor: Normalized observed data.
@@ -288,36 +320,36 @@ class MovingAverage2:
         #plt.grid(True)
         plt.show()
 
-    # def posterior_hist(self, posterior, true_params=None):
-    #     """
-    #     Plots histograms of the posterior parameters.
+    def posterior_hist(self, posterior, true_params=None):
+        """
+        Plots histograms of the posterior parameters.
 
-    #     :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
-    #     """
-    #     if true_params is None:
-    #         true_params = self.true_params.numpy()
+        :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
+        """
+        if true_params is None:
+            true_params = self.true_params.numpy()
 
-    #     # Convert tensor to NumPy array for plotting
-    #     data = posterior.cpu().numpy()
+        # Convert tensor to NumPy array for plotting
+        data = posterior.cpu().numpy()
 
-    #     # Create histograms for each parameter
-    #     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+        # Create histograms for each parameter
+        fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
-    #     # Histogram of Theta 1
-    #     axs[0].hist(data[:, 0], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
-    #     axs[0].axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
-    #     axs[0].set_title('Histogram of Theta 1')
-    #     axs[0].set_xlabel('Theta 1')
-    #     axs[0].set_ylabel('Frequency')
+        # Histogram of Theta 1
+        axs[0].hist(data[:, 0], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        axs[0].axvline(x=true_params[0], color='red', linestyle='--', linewidth=1)
+        axs[0].set_title('Histogram of Theta 1')
+        axs[0].set_xlabel('Theta 1')
+        axs[0].set_ylabel('Frequency')
 
-    #     # Histogram of Theta 2
-    #     axs[1].hist(data[:, 1], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
-    #     axs[1].axvline(x=true_params[1], color='red', linestyle='--', linewidth=1)
-    #     axs[1].set_title('Histogram of Theta 2')
-    #     axs[1].set_xlabel('Theta 2')
+        # Histogram of Theta 2
+        axs[1].hist(data[:, 1], bins=30, color='skyblue', edgecolor='black', range=(0, 1))
+        axs[1].axvline(x=true_params[1], color='red', linestyle='--', linewidth=1)
+        axs[1].set_title('Histogram of Theta 2')
+        axs[1].set_xlabel('Theta 2')
 
-    #     plt.tight_layout()
-    #     plt.show()
+        plt.tight_layout()
+        plt.show()
 
 
     def posterior_kde(self, posterior, true_params=None):
