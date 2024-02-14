@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from typing import List, Any, Tuple
+from typing import Any, Tuple
 
 
 class ModelBase(nn.Module):
@@ -25,7 +25,8 @@ class ModelBase(nn.Module):
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the mean and log variance of the latent distribution.
         """
         raise NotImplementedError(
-            "The encode method must be implemented by the subclass.")
+            "The encode method must be implemented by the subclass."
+        )
 
     def decode(self, z: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
         """
@@ -39,7 +40,8 @@ class ModelBase(nn.Module):
             torch.Tensor: The output parameters theta for the distribution of the decoded data.
         """
         raise NotImplementedError(
-            "The decode method must be implemented by the subclass.")
+            "The decode method must be implemented by the subclass."
+        )
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """
@@ -47,16 +49,20 @@ class ModelBase(nn.Module):
         Must be implemented by subclasses if they use stochastic latent variables.
         """
         raise NotImplementedError(
-            "The reparameterize method must be implemented by the subclass.")
+            "The reparameterize method must be implemented by the subclass."
+        )
 
-    def forward(self, *inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, *inputs: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass of the model.
         Must be implemented by subclasses to define the computation performed at every call.
         Should return the reconstructed input, the mean and log variance of the latent distribution.
         """
         raise NotImplementedError(
-            "The forward method must be implemented by the subclass.")
+            "The forward method must be implemented by the subclass."
+        )
 
     def loss_function(self, *inputs: Any, **kwargs) -> torch.Tensor:
         """
@@ -64,7 +70,8 @@ class ModelBase(nn.Module):
         Must be implemented by subclasses.
         """
         raise NotImplementedError(
-            "The loss_function method must be implemented by the subclass.")
+            "The loss_function method must be implemented by the subclass."
+        )
 
     def inference(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -72,7 +79,8 @@ class ModelBase(nn.Module):
         Must be implemented by subclasses.
         """
         raise NotImplementedError(
-            "The generate method must be implemented by the subclass.")
+            "The generate method must be implemented by the subclass."
+        )
 
     # @abstractmethod
     def train_model(self, *inputs: Any, **kwargs) -> torch.Tensor:
@@ -80,4 +88,5 @@ class ModelBase(nn.Module):
         Sub-classable method for training the cave model. Each derived class must implement.
         """
         raise NotImplementedError(
-            "The generate method must be implemented by the subclass.")
+            "The generate method must be implemented by the subclass."
+        )
