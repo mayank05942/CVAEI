@@ -21,31 +21,6 @@ class MovingAverage2:
         self.theta_normalizer = None
         self.data_normalizer = None
 
-    # def simulator(self, param, seed=42):
-    #     """
-    #     Simulate data using the MA2 model.
-
-    #     Parameters:
-    #     - param (torch.Tensor): The parameters for the MA2 model.
-    #     - seed (int): Seed for random number generation to ensure reproducibility.
-
-    #     Returns:
-    #     - torch.Tensor: Simulated data based on the MA2 model.
-    #     """
-    #     torch.manual_seed(seed)
-    #     n = 100
-    #     m = len(param)
-    #     g = torch.randn(n)
-    #     gy = torch.randn(n) * 0.3
-    #     y = torch.zeros(n)
-    #     x = torch.zeros(n)
-    #     for t in range(n):
-    #         x[t] += g[t]
-    #         for p in range(min(t, m)):
-    #             x[t] += g[t - 1 - p] * param[p]
-    #         y[t] = x[t] + gy[t]
-    #     return y
-
     def simulator(self, params, seed=42, n=100, device=None):
         """
         Simulate data using the MA2 model for a batch of parameters.
@@ -58,35 +33,37 @@ class MovingAverage2:
 
         Returns:
         - torch.Tensor: Simulated data based on the MA2 model for each set of parameters in the batch.
+
         """
-        # Set random seed for reproducibility
+
         torch.manual_seed(seed)
 
-        # Ensure params has two dimensions [batch_size, param_dim]
+        if device is not None:
+            params = params.to(device)
+
         if params.ndimension() == 1:
             params = params.unsqueeze(0)
 
-        # Set the device for computations
-        device = device or torch.device("cpu")
-        params = params.to(device)
+        # Preparing the random inputs
+        g = torch.randn(n, device=device)
+        gy = torch.randn(n, device=device) * 0.3
 
-        # Get batch size and sequence length
-        batch_size, param_dim = params.size(0), params.size(1)
+        # Expand g to match the batch size and perform batch operations
+        g_expanded = g.expand(params.size(0), n)
+        gy_expanded = gy.expand(params.size(0), n)
 
-        # Generate random noise for all batches
-        g = torch.randn(batch_size, n, device=device)
-        gy = torch.randn(batch_size, n, device=device) * 0.3
+        # Initialize the output tensor
+        y = torch.zeros((params.size(0), n), device=device)
 
-        # Initialize x and y for all batches
-        x = torch.zeros(batch_size, n, device=device)
-        y = torch.zeros(batch_size, n, device=device)
+        # Apply MA2 model in a vectorized manner
+        for p in range(params.size(1)):
+            if p == 0:
+                y[:, 1:] += g_expanded[:, :-1] * params[:, p : p + 1]
+            else:
+                y[:, p + 1 :] += g_expanded[:, : -p - 1] * params[:, p : p + 1]
 
-        # Simulate the MA2 process in a vectorized form
-        for t in range(n):
-            x[:, t] += g[:, t]
-            for p in range(1, min(t + 1, param_dim + 1)):
-                x[:, t] += g[:, t - p] * params[:, p - 1] if t - p >= 0 else 0
-            y[:, t] = x[:, t] + gy[:, t]
+        # Add the original noise and the additional noise term
+        y += g_expanded + gy_expanded
 
         return y
 
