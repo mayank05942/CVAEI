@@ -340,7 +340,7 @@ class MovingAverage2:
         :param kde: If True, plots KDE instead of histogram.
         """
         if true_params is None:
-            true_params = self.true_params.numpy()
+            true_params = self.true_params.cpu().numpy()
 
         # Convert tensor to NumPy array for plotting
         data = posterior.cpu().numpy()
