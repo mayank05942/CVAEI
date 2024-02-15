@@ -47,6 +47,9 @@ class MovingAverage2:
         if device.type == 'cuda':
             torch.cuda.manual_seed_all(seed)
             
+        params = params.to(device)
+
+            
         if params.ndimension() == 1:
             params = params.unsqueeze(0)
 
@@ -93,7 +96,7 @@ class MovingAverage2:
                 acc += 1
         return torch.stack(p)
 
-    def generate_data(self, num_samples=1000):
+    def generate_data(self, num_samples=1000, device = None):
         """
         Generate data samples based on the prior and simulator.
 
@@ -104,11 +107,11 @@ class MovingAverage2:
         - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
         """
         theta = self.prior(num_samples=num_samples)
-        data = self.simulator(theta)
+        data = self.simulator(theta, device= device)
         # data = torch.stack([self.simulator(t) for t in theta])
         return theta, data
 
-    def prepare_data(self, num_samples=1000, scale=True, validation=True):
+    def prepare_data(self, num_samples=1000, scale=True, validation=True, device = None):
         """
         Generate, (optionally) normalize data and parameters, and return them with their normalizers.
         Optionally generates validation data of size 10,000. Prints the shape of all generated data.
@@ -123,8 +126,13 @@ class MovingAverage2:
         theta normalizer, and data normalizer. If validation is True, also returns
         (optionally normalized) validation theta and validation data.
         """
+        if device is None:
+            print("Please provide a device, else will use CPU")
+            print(" This can lead to inconsistent behvaiour if some tensors are on CPU and some are on GPU")
+            device = torch.device("cpu")
+        
         # Generate training data
-        train_theta, train_data = self.generate_data(num_samples=num_samples)
+        train_theta, train_data = self.generate_data(num_samples=num_samples, device= device)
 
         # Initialize normalizers
         self.theta_normalizer = DataNormalizer()
@@ -153,7 +161,7 @@ class MovingAverage2:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = self.generate_data(num_samples=10000)
+            val_theta, val_data = self.generate_data(num_samples=10000, device = device)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
