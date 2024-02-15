@@ -106,7 +106,7 @@ class CVAE(ModelBase):
         data, theta = data.to(device), theta.to(device)
         theta_pred, mu, logvar = self(theta, data)  # Forward pass through the model
         theta_pred_unnorm = theta_normalizer.inverse_transform(theta_pred)
-        y_pred_unnorm = forward_model(theta_pred_unnorm, device=device)
+        y_pred_unnorm = forward_model(theta_pred_unnorm)
         y_pred_norm = data_normalizer.transform(y_pred_unnorm).to(device)
 
         if y_pred_norm.dim() == 3:

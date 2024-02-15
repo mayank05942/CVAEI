@@ -13,15 +13,20 @@ class MovingAverage2:
         Parameters:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         if true_params is None:
-            self.true_params = torch.tensor([0.6,  0.2], dtype=torch.float32)
+            self.true_params = torch.tensor(
+                [0.6, 0.2], dtype=torch.float32, device=self.device
+            )
         else:
-            self.true_params = true_params
+            self.true_params = true_params.to(self.device)
 
         self.theta_normalizer = None
         self.data_normalizer = None
 
-    def simulator(self, params, seed=42, n=100, device=None):
+    def simulator(self, params, seed=42, n=100):
         """
         Simulate data using the MA2 model for a batch of parameters.
 
@@ -38,31 +43,24 @@ class MovingAverage2:
 
         torch.manual_seed(seed)
 
-        if device is None:
-            device = torch.device("cpu")
-
-        # Set seed for both CPU and GPU for reproducibility
-        torch.manual_seed(seed)
-        
-        if device.type == 'cuda':
+        if self.device.type == "cuda":
             torch.cuda.manual_seed_all(seed)
-            
-        params = params.to(device)
 
-            
+        params = params.to(self.device)
+
         if params.ndimension() == 1:
             params = params.unsqueeze(0)
 
         # Preparing the random inputs
-        g = torch.randn(n, device=device)
-        gy = torch.randn(n, device=device) * 0.3
+        g = torch.randn(n, device=self.device)
+        gy = torch.randn(n, device=self.device) * 0.3
 
         # Expand g to match the batch size and perform batch operations
         g_expanded = g.expand(params.size(0), n)
         gy_expanded = gy.expand(params.size(0), n)
 
         # Initialize the output tensor
-        y = torch.zeros((params.size(0), n), device=device)
+        y = torch.zeros((params.size(0), n), device=self.device)
 
         # Apply MA2 model in a vectorized manner
         for p in range(params.size(1)):
@@ -76,8 +74,7 @@ class MovingAverage2:
 
         return y
 
-    @staticmethod
-    def prior(num_samples):
+    def prior(self, num_samples):
         """
         Sample parameters from the prior distribution using PyTorch tensors.
 
@@ -90,13 +87,15 @@ class MovingAverage2:
         p = []
         acc = 0
         while acc < num_samples:
-            r = torch.rand(2) * torch.tensor([4, 2]) + torch.tensor([-2, -1])
+            r = torch.rand(2, device=self.device) * torch.tensor(
+                [4, 2], device=self.device
+            ) + torch.tensor([-2, -1], device=self.device)
             if r[1] + r[0] >= -1 and r[1] - r[0] >= -1:
                 p.append(r)
                 acc += 1
         return torch.stack(p)
 
-    def generate_data(self, num_samples=1000, device = None):
+    def generate_data(self, num_samples=1000):
         """
         Generate data samples based on the prior and simulator.
 
@@ -107,11 +106,11 @@ class MovingAverage2:
         - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
         """
         theta = self.prior(num_samples=num_samples)
-        data = self.simulator(theta, device= device)
+        data = self.simulator(theta)
         # data = torch.stack([self.simulator(t) for t in theta])
         return theta, data
 
-    def prepare_data(self, num_samples=1000, scale=True, validation=True, device = None):
+    def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
         Generate, (optionally) normalize data and parameters, and return them with their normalizers.
         Optionally generates validation data of size 10,000. Prints the shape of all generated data.
@@ -126,13 +125,8 @@ class MovingAverage2:
         theta normalizer, and data normalizer. If validation is True, also returns
         (optionally normalized) validation theta and validation data.
         """
-        if device is None:
-            print("Please provide a device, else will use CPU")
-            print(" This can lead to inconsistent behvaiour if some tensors are on CPU and some are on GPU")
-            device = torch.device("cpu")
-        
         # Generate training data
-        train_theta, train_data = self.generate_data(num_samples=num_samples, device= device)
+        train_theta, train_data = self.generate_data(num_samples=num_samples)
 
         # Initialize normalizers
         self.theta_normalizer = DataNormalizer()
@@ -161,7 +155,7 @@ class MovingAverage2:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = self.generate_data(num_samples=10000, device = device)
+            val_theta, val_data = self.generate_data(num_samples=10000)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
@@ -180,7 +174,7 @@ class MovingAverage2:
 
         return return_values
 
-    def observed_data(self, true_params=None, device = None):
+    def observed_data(self, true_params=None):
         """
         Generate observed data based on true parameters and return the normalized observed data.
 
@@ -191,10 +185,7 @@ class MovingAverage2:
         Returns:
         - torch.Tensor: Normalized observed data.
         """
-        if device is None:
-            print("Please provide a device, else will use CPU")
-            device = torch.device("cpu")
-        
+
         if true_params is None:
             true_params = self.true_params
 
@@ -205,7 +196,7 @@ class MovingAverage2:
             )
 
         # Simulate observed data with true parameters
-        observed_data = self.simulator(true_params, device = device)
+        observed_data = self.simulator(true_params)
 
         # Normalize the observed data using the previously fit data normalizer
         observed_data_norm = self.data_normalizer.transform(observed_data.unsqueeze(0))
@@ -383,3 +374,39 @@ class MovingAverage2:
 
         plt.tight_layout()
         plt.show()
+
+    def get_info(self):
+        # Directly check the device of tensor attributes
+        tensor_attributes = [
+            "train_theta_norm",
+            "train_data_norm",
+            "val_theta_norm",
+            "val_data_norm",
+            "observed_data",
+        ]
+        for attr in tensor_attributes:
+            if hasattr(self, attr):
+                tensor = getattr(self, attr)
+                if isinstance(tensor, torch.Tensor):
+                    print(f"{attr} is on device: {tensor.device}")
+
+        # Assuming normalizers store tensors or provide a method to check their device
+        normalizer_attributes = ["theta_normalizer", "data_normalizer"]
+        for attr in normalizer_attributes:
+            if hasattr(self, attr):
+                normalizer = getattr(self, attr)
+                # Example check, adjust based on your implementation of DataNormalizer
+                if hasattr(
+                    normalizer, "device"
+                ):  # If your normalizer has a 'device' attribute
+                    print(f"{attr} uses device: {normalizer.device}")
+                elif hasattr(
+                    normalizer, "get_device"
+                ):  # Or if it has a method to get the device
+                    print(f"{attr} uses device: {normalizer.get_device()}")
+
+        # Additional checks for observed_data if it's stored differently
+        if hasattr(self, "observed_data"):
+            observed_data = getattr(self, "observed_data")
+            if isinstance(observed_data, torch.Tensor):
+                print(f"observed_data is on device: {observed_data.device}")
