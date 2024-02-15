@@ -14,7 +14,7 @@ class MovingAverage2:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
         if true_params is None:
-            self.true_params = torch.tensor([0.6, 0.2])
+            self.true_params = torch.tensor([0.6,  0.2], dtype=torch.float32)
         else:
             self.true_params = true_params
 
@@ -38,9 +38,15 @@ class MovingAverage2:
 
         torch.manual_seed(seed)
 
-        if device is not None:
-            params = params.to(device)
+        if device is None:
+            device = torch.device("cpu")
 
+        # Set seed for both CPU and GPU for reproducibility
+        torch.manual_seed(seed)
+        
+        if device.type == 'cuda':
+            torch.cuda.manual_seed_all(seed)
+            
         if params.ndimension() == 1:
             params = params.unsqueeze(0)
 
