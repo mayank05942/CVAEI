@@ -180,7 +180,7 @@ class MovingAverage2:
 
         return return_values
 
-    def observed_data(self, true_params=None):
+    def observed_data(self, true_params=None, device = None):
         """
         Generate observed data based on true parameters and return the normalized observed data.
 
@@ -191,6 +191,10 @@ class MovingAverage2:
         Returns:
         - torch.Tensor: Normalized observed data.
         """
+        if device is None:
+            print("Please provide a device, else will use CPU")
+            device = torch.device("cpu")
+        
         if true_params is None:
             true_params = self.true_params
 
@@ -201,7 +205,7 @@ class MovingAverage2:
             )
 
         # Simulate observed data with true parameters
-        observed_data = self.simulator(true_params)
+        observed_data = self.simulator(true_params, device = device)
 
         # Normalize the observed data using the previously fit data normalizer
         observed_data_norm = self.data_normalizer.transform(observed_data.unsqueeze(0))
