@@ -41,8 +41,8 @@ class GKDistribution:
 
         if params.ndim == 1:
             params = params.unsqueeze(0)
-            
-        params = params.to(device = self.device)
+
+        params = params.to(device=self.device)
 
         A, B, g, k = params.t()
 
@@ -57,34 +57,42 @@ class GKDistribution:
             A.unsqueeze(1)
             + B.unsqueeze(1) * term * (1 + z.pow(2)).pow(k.unsqueeze(1)) * z
         )
-        
+
         y = self.clean_data(y)
-        
+
         return y
 
-    
-    def prior(self,num_samples):
+    def prior(self, num_samples):
         """
         Sample parameters from the prior distribution using PyTorch.
         """
-        A = (torch.rand(num_samples, device=self.device) * 4.9 + 0.1)  # Uniformly distributed between 0.1 and 5
+        A = (
+            torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+        )  # Uniformly distributed between 0.1 and 5
         B = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
         g = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
         k = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
         return torch.stack((A, B, g, k), dim=1)
 
-    @staticmethod
-    def clean_data(data, lower_bound=-10, upper_bound=50, seed=None):
+    def clean_data(self, data, lower_bound=-10, upper_bound=50, seed=55):
         """
-        Clean the data by replacing outliers with random values within specified bounds.
+        Clean the data by replacing outliers with random values within specified bounds, using self.device.
         """
         if seed is not None:
             torch.manual_seed(seed)
 
+        # Ensure data is on the specified device
+        data = data.to(self.device)
+
+        # Generate a mask for values outside the bounds
         mask = (data < lower_bound) | (data > upper_bound)
+
+        # Generate random replacements on the correct device
         random_replacements = lower_bound + (upper_bound - lower_bound) * torch.rand(
-            mask.sum()
+            mask.sum(), device=self.device
         )
+
+        # Apply replacements
         data[mask] = random_replacements
 
         return data
@@ -95,72 +103,72 @@ class GKDistribution:
         """
         theta = self.prior(num_samples=num_samples)
         data = self.simulator(theta, seed=seed)  # Vectorized simulation
-        #data = self.clean_data(data)
+        # data = self.clean_data(data)
         return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
-            """
-            Generate, (optionally) normalize data and parameters, and return them with their normalizers.
-            Optionally generates validation data of size 10,000. Prints the shape of all generated data.
+        """
+        Generate, (optionally) normalize data and parameters, and return them with their normalizers.
+        Optionally generates validation data of size 10,000. Prints the shape of all generated data.
 
-            Parameters:
-            - num_samples (int): Number of samples to generate and (optionally) normalize for training.
-            - scale (bool): If True, return normalized data; otherwise, return unnormalized data.
-            - validation (bool): If True, also generate and return validation data of size 10,000.
+        Parameters:
+        - num_samples (int): Number of samples to generate and (optionally) normalize for training.
+        - scale (bool): If True, return normalized data; otherwise, return unnormalized data.
+        - validation (bool): If True, also generate and return validation data of size 10,000.
 
-            Returns:
-            - Tuple containing (optionally normalized) training theta, training data,
-            theta normalizer, and data normalizer. If validation is True, also returns
-            (optionally normalized) validation theta and validation data.
-            """
-            # Generate training data
-            train_theta, train_data = self.generate_data(num_samples=num_samples)
+        Returns:
+        - Tuple containing (optionally normalized) training theta, training data,
+        theta normalizer, and data normalizer. If validation is True, also returns
+        (optionally normalized) validation theta and validation data.
+        """
+        # Generate training data
+        train_theta, train_data = self.generate_data(num_samples=num_samples)
 
-            # Initialize normalizers
-            self.theta_normalizer = DataNormalizer()
-            self.data_normalizer = DataNormalizer()
+        # Initialize normalizers
+        self.theta_normalizer = DataNormalizer()
+        self.data_normalizer = DataNormalizer()
+
+        if scale:
+            # Normalize training data
+            self.theta_normalizer.fit(train_theta)
+            train_theta_norm = self.theta_normalizer.transform(train_theta)
+            self.data_normalizer.fit(train_data)
+            train_data_norm = self.data_normalizer.transform(train_data)
+        else:
+            # Use unnormalized training data
+            train_theta_norm = train_theta
+            train_data_norm = train_data
+
+        print(f"Training Theta Shape: {train_theta_norm.shape}")
+        print(f"Training Data Shape: {train_data_norm.shape}")
+
+        return_values = (
+            train_theta_norm,
+            train_data_norm,
+            self.theta_normalizer,
+            self.data_normalizer,
+        )
+
+        if validation:
+            # Generate validation data
+            val_theta, val_data = self.generate_data(num_samples=10000)
 
             if scale:
-                # Normalize training data
-                self.theta_normalizer.fit(train_theta)
-                train_theta_norm = self.theta_normalizer.transform(train_theta)
-                self.data_normalizer.fit(train_data)
-                train_data_norm = self.data_normalizer.transform(train_data)
+                # Normalize validation data using the same normalizers as for the training data
+                val_theta_norm = self.theta_normalizer.transform(val_theta)
+                val_data_norm = self.data_normalizer.transform(val_data)
             else:
-                # Use unnormalized training data
-                train_theta_norm = train_theta
-                train_data_norm = train_data
+                # Use unnormalized validation data
+                val_theta_norm = val_theta
+                val_data_norm = val_data
 
-            print(f"Training Theta Shape: {train_theta_norm.shape}")
-            print(f"Training Data Shape: {train_data_norm.shape}")
+            print(f"Validation Theta Shape: {val_theta_norm.shape}")
+            print(f"Validation Data Shape: {val_data_norm.shape}")
 
-            return_values = (
-                train_theta_norm,
-                train_data_norm,
-                self.theta_normalizer,
-                self.data_normalizer,
-            )
+            # Extend return values to include validation data
+            return_values += (val_theta_norm, val_data_norm)
 
-            if validation:
-                # Generate validation data
-                val_theta, val_data = self.generate_data(num_samples=10000)
-
-                if scale:
-                    # Normalize validation data using the same normalizers as for the training data
-                    val_theta_norm = self.theta_normalizer.transform(val_theta)
-                    val_data_norm = self.data_normalizer.transform(val_data)
-                else:
-                    # Use unnormalized validation data
-                    val_theta_norm = val_theta
-                    val_data_norm = val_data
-
-                print(f"Validation Theta Shape: {val_theta_norm.shape}")
-                print(f"Validation Data Shape: {val_data_norm.shape}")
-
-                # Extend return values to include validation data
-                return_values += (val_theta_norm, val_data_norm)
-
-            return return_values
+        return return_values
 
     def observed_data(self, true_params=None):
         """
@@ -303,8 +311,8 @@ class GKDistribution:
                 y=true_params[i], color="red", linestyle="--", label="True Value"
             )
             axes[i].set_title(f"Parameter {i+1}")
-            #axes[i].set_xlabel("Sample Index")
-            #axes[i].set_ylabel(f"Value")
+            # axes[i].set_xlabel("Sample Index")
+            # axes[i].set_ylabel(f"Value")
             axes[i].legend()
 
         plt.tight_layout()
@@ -335,7 +343,7 @@ class GKDistribution:
 
         plt.tight_layout()
         plt.show()
-        
+
     def get_info(self):
         # Directly check the device of tensor attributes
         tensor_attributes = [
