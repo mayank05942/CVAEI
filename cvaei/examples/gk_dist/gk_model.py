@@ -290,7 +290,7 @@ class GKDistribution:
         - true_params (list or array, optional): The true parameter values. If None, uses stored true_params.
         """
         if true_params is None:
-            true_params = self.true_params.numpy()
+            true_params = self.true_params.cpu().numpy()
         else:
             true_params = np.array(true_params)
 
@@ -326,7 +326,7 @@ class GKDistribution:
         """
 
         if true_params is None:
-            true_params = self.true_params.numpy()
+            true_params = self.true_params.cpu().numpy()
 
         # Convert tensor to NumPy array for plotting
         data = posterior.cpu().numpy()
