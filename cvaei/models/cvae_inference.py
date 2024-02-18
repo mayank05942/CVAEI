@@ -24,12 +24,15 @@ class CVAE(ModelBase):
         encoder_hidden_dims: List[int],
         decoder_hidden_dims: List[int],
         activation_fn: nn.Module = nn.ReLU(),
+        **kwargs,  # Accept additional keyword arguments
     ):
         super(CVAE, self).__init__()
 
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.conditional_dim = conditional_dim
+        self.w_recon = kwargs.get("w_recon", 1.0)
+        self.w_misfit = kwargs.get("w_misfit", 1.0)
 
         self.training_losses = {
             "total_loss": [],
@@ -79,17 +82,13 @@ class CVAE(ModelBase):
 
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
         # Reconstruction loss compares the input x to its reconstruction x_hat
-        recon_loss = F.mse_loss(x_hat, x, reduction="sum")
-
+        recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
         # Misfit loss compares the actual y to the predicted y_hat
-        misfit_loss = F.mse_loss(y_hat, y, reduction="sum")
-
+        misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
         # KL divergence loss
-        kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-
+        kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta
         # Total loss
-        total_loss = recon_loss + misfit_loss + beta * kl_div
-
+        total_loss = recon_loss + misfit_loss + kl_div
         return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     def process_batch(
@@ -394,5 +393,3 @@ class CVAE(ModelBase):
 
         plt.tight_layout()
         plt.show()
-
-   

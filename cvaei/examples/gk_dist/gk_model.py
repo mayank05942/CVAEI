@@ -24,7 +24,7 @@ class GKDistribution:
         self.theta_normalizer = None
         self.data_normalizer = None
 
-    def simulator(self, params, c=0.8, n_obs=1000, seed=42):
+    def simulator(self, params, c=0.8, n_obs=1000, seed=400):
         """
         Vectorized sampling from the g-and-k distribution using provided parameters.
 
@@ -231,14 +231,24 @@ class GKDistribution:
         - observations (torch.Tensor): Tensor of observed data, each row is a time series.
         - num_samples (int): Number of samples to consider for plotting.
         """
+        # Convert observations to numpy for plotting
         observations = observations.cpu().numpy()
+        
+        # Ensure num_samples does not exceed the number of available observations
         num_samples = min(num_samples, observations.shape[0])
-
+        
+        # Randomly select indices of observations to plot
+        if num_samples < observations.shape[0]:
+            selected_indices = np.random.choice(observations.shape[0], num_samples, replace=False)
+        else:
+            selected_indices = np.arange(observations.shape[0])
+        
+        # Plotting
         plt.figure(figsize=(10, 4))
-        for i in range(num_samples):
+        for i in selected_indices:
             plt.plot(observations[i], alpha=0.7)
 
-        plt.title(f"Overlapping Time Series of Observed Data for {num_samples} Samples")
+        plt.title(f"Overlapping Time Series of Observed Data for {num_samples} Random Samples")
         plt.xlabel("Time Step")
         plt.ylabel("Observed Value")
         plt.grid(True)
@@ -352,6 +362,7 @@ class GKDistribution:
             "val_theta_norm",
             "val_data_norm",
             "observed_data",
+            "true_params"
         ]
         for attr in tensor_attributes:
             if hasattr(self, attr):
