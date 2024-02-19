@@ -1,7 +1,9 @@
-import torch
-import numpy as np
-from cvaei.helper import DataNormalizer
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from torch.distributions import uniform
+
+from cvaei.helper import DataNormalizer
 
 
 class GKDistribution:
@@ -36,6 +38,7 @@ class GKDistribution:
         Returns:
         - torch.Tensor: Simulated data based on the GK model.
         """
+
         if seed is not None:
             torch.manual_seed(seed)
 
@@ -66,13 +69,32 @@ class GKDistribution:
         """
         Sample parameters from the prior distribution using PyTorch.
         """
-        A = (
-            torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-        )  # Uniformly distributed between 0.1 and 5
-        B = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-        g = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-        k = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+        # Define the range of the uniform distribution
+        low = torch.tensor([0.1], device=self.device)
+        high = torch.tensor([5.0], device=self.device)
+
+        # Create the uniform distribution object
+        distribution = uniform.Uniform(low, high)
+
+        # Sample from the distribution and remove the extra dimension with squeeze()
+        A = distribution.sample((num_samples,)).squeeze(-1)
+        B = distribution.sample((num_samples,)).squeeze(-1)
+        g = distribution.sample((num_samples,)).squeeze(-1)
+        k = distribution.sample((num_samples,)).squeeze(-1)
+        # Stack the samples into a single tensor
         return torch.stack((A, B, g, k), dim=1)
+
+    # def prior(self, num_samples):
+    #     """
+    #     Sample parameters from the prior distribution using PyTorch.
+    #     """
+    #     A = (
+    #         torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+    #     )  # Uniformly distributed between 0.1 and 5
+    #     B = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+    #     g = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+    #     k = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+    #     return torch.stack((A, B, g, k), dim=1)
 
     def clean_data(self, data, lower_bound=-10, upper_bound=50, seed=55):
         """
@@ -233,22 +255,26 @@ class GKDistribution:
         """
         # Convert observations to numpy for plotting
         observations = observations.cpu().numpy()
-        
+
         # Ensure num_samples does not exceed the number of available observations
         num_samples = min(num_samples, observations.shape[0])
-        
+
         # Randomly select indices of observations to plot
         if num_samples < observations.shape[0]:
-            selected_indices = np.random.choice(observations.shape[0], num_samples, replace=False)
+            selected_indices = np.random.choice(
+                observations.shape[0], num_samples, replace=False
+            )
         else:
             selected_indices = np.arange(observations.shape[0])
-        
+
         # Plotting
         plt.figure(figsize=(10, 4))
         for i in selected_indices:
             plt.plot(observations[i], alpha=0.7)
 
-        plt.title(f"Overlapping Time Series of Observed Data for {num_samples} Random Samples")
+        plt.title(
+            f"Overlapping Time Series of Observed Data for {num_samples} Random Samples"
+        )
         plt.xlabel("Time Step")
         plt.ylabel("Observed Value")
         plt.grid(True)
@@ -362,7 +388,7 @@ class GKDistribution:
             "val_theta_norm",
             "val_data_norm",
             "observed_data",
-            "true_params"
+            "true_params",
         ]
         for attr in tensor_attributes:
             if hasattr(self, attr):
