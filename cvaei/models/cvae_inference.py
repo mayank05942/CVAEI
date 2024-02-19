@@ -5,6 +5,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+import ray
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
+
 from .model_base import ModelBase
 from .model_defination import Decoder, Encoder
 
@@ -33,6 +38,13 @@ class CVAE(ModelBase):
         self.conditional_dim = conditional_dim
         self.w_recon = kwargs.get("w_recon", 1.0)
         self.w_misfit = kwargs.get("w_misfit", 1.0)
+
+        activation_fn_mapping = {
+            "relu": nn.ReLU(),
+            "leaky_relu": nn.LeakyReLU(),
+            "tanh": nn.Tanh(),
+            "sigmoid": nn.Sigmoid(),
+        }
 
         self.training_losses = {
             "total_loss": [],
@@ -393,3 +405,76 @@ class CVAE(ModelBase):
 
         plt.tight_layout()
         plt.show()
+
+    def tune_hyperparameters(
+        self, train_loader, validation_loader, num_samples=10, max_num_epochs=10
+    ):
+        """
+        Method to perform hyperparameter tuning using Ray Tune, automatically adjusting
+        resources per trial based on available hardware.
+
+        Args:
+            train_loader (DataLoader): DataLoader for training data.
+            validation_loader (DataLoader): DataLoader for validation data.
+            num_samples (int): Number of hyperparameter configurations to try.
+            max_num_epochs (int): Maximum number of epochs for training during tuning.
+
+        Returns:
+            dict: Best hyperparameter configuration found.
+        """
+
+        # Initialize Ray
+        if not ray.is_initialized():
+            ray.init()
+
+        # Dynamically determine resources
+        num_cpus = ray.available_resources().get("CPU", 1)
+        num_gpus = ray.available_resources().get("GPU", 0)
+
+        # Ensure at least one CPU is used per trial, and adjust GPUs according to availability
+        cpus_per_trial = max(1, num_cpus // num_samples)
+        gpus_per_trial = num_gpus / num_samples if num_gpus > 0 else 0
+
+        def train_with_config(config):
+            # Apply the hyperparameters from Ray Tune config to the model
+            self.apply_config(config)
+
+            # Set up the optimizer using the config
+            optimizer = self.configure_optimizer(config["lr"], config["optimizer"])
+
+            # Run the training and validation for the current trial
+            self.train_model(train_loader, validation_loader, optimizer, max_num_epochs)
+
+            # Here, we assume `validate_epoch` returns the average validation loss
+            val_loss = self.validate_epoch(validation_loader)
+            tune.report(loss=val_loss)
+
+        # Define the hyperparameter search space
+        search_space = {
+            "lr": tune.loguniform(1e-5, 1e-1),
+            "batch_size": tune.choice([128, 256, 512, 1024]),
+            "activation": tune.choice(["relu", "leaky_relu", "tanh", "sigmoid"]),
+            "optimizer": tune.choice(["adam", "sgd"]),
+            # ... include other hyperparameters as needed ...
+        }
+
+        # Setup the experiment with the ASHA scheduler and CLIReporter
+        scheduler = ASHAScheduler(metric="loss", mode="min", max_t=max_num_epochs)
+        reporter = CLIReporter(metric_columns=["loss", "training_iteration"])
+
+        # Run the Ray Tune experiment
+        result = tune.run(
+            train_with_config,
+            resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},
+            config=search_space,
+            num_samples=num_samples,
+            scheduler=scheduler,
+            progress_reporter=reporter,
+        )
+
+        # Shutdown Ray to free up resources
+        ray.shutdown()
+
+        best_config = result.get_best_config(metric="loss", mode="min")
+        print("Best hyperparameters found were: ", best_config)
+        return best_config
