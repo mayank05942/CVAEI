@@ -4,11 +4,16 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.nn import functional as F
+import os
 
 import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.tuner import Tuner
+from ray import air, tune
+from ray.tune import PlacementGroupFactory
+from ray import train as ray_train
 
 from .model_base import ModelBase
 from .model_defination import Decoder, Encoder
@@ -406,85 +411,89 @@ class CVAE(ModelBase):
         plt.tight_layout()
         plt.show()
 
+    def train_with_config(self, config, train_loader, validation_loader):
+        # Access the checkpoint using Ray's recommended approach
+        checkpoint = ray_train.get_checkpoint()
+        if checkpoint is not None:
+            with checkpoint.as_directory() as checkpoint_dir:
+                # Load model state from the checkpoint directory if applicable
+                model_state_path = os.path.join(checkpoint_dir, "model_state.pth")
+                if os.path.exists(model_state_path):
+                    state_dict = torch.load(model_state_path)
+                    # Assuming your model's state dict can be directly loaded here
+                    # Adjust if you have separate components like encoder/decoder
+                    self.load_state_dict(state_dict)
+
+        torch.cuda.empty_cache()
+        self.apply_config(
+            config
+        )  # Make sure this adjusts your model parameters based on the config
+
+        optimizer = self.configure_optimizer(config["lr"], config["optimizer"])
+
+        # Implement the actual training loop here
+        # Ensure train_model is adapted to use without checkpoint_dir and correctly trains the model
+        self.train_model(
+            train_loader, validation_loader, optimizer, config["num_epochs"]
+        )
+
+        # Validation logic after training
+        val_loss = self.validate_epoch(
+            validation_loader
+        )  # Ensure this function returns validation loss
+        tune.report(loss=val_loss)  # Report the validation loss to Ray Tune
+
     def tune_hyperparameters(
-        self, train_loader, validation_loader, num_samples=10, max_num_epochs=10
+        self, train_loader, validation_loader, num_samples=10, max_num_epochs=1
     ):
-        """
-        Method to perform hyperparameter tuning using Ray Tune, automatically adjusting
-        resources per trial based on available hardware.
+        if ray.is_initialized():
+            ray.shutdown()
+        ray.init(log_to_driver=False)
 
-        Args:
-            train_loader (DataLoader): DataLoader for training data.
-            validation_loader (DataLoader): DataLoader for validation data.
-            num_samples (int): Number of hyperparameter configurations to try.
-            max_num_epochs (int): Maximum number of epochs for training during tuning.
+        train_loader_ref = ray.put(train_loader)
+        validation_loader_ref = ray.put(validation_loader)
 
-        Returns:
-            dict: Best hyperparameter configuration found.
-        """
-        try:
-            if ray.is_initialized():
-                ray.shutdown()
-            ray.init(log_to_driver=False)
+        # Define the hyperparameter search space
+        search_space = {
+            "lr": tune.loguniform(1e-5, 1e-4),
+            "optimizer": tune.choice(["adam"]),
+            "num_epochs": tune.choice([1]),  # Adjusted for quick testing
+        }
 
-            # Initialize Ray
-            if not ray.is_initialized():
-                ray.init()
+        # Get the current working directory
+        current_working_dir = os.getcwd()
 
-            # Dynamically determine resources
-            num_cpus = ray.available_resources().get("CPU", 1)
-            num_gpus = ray.available_resources().get("GPU", 0)
+        # Configure the resources for each trial
+        available_cpus = ray.available_resources().get("CPU", 1)
+        available_gpus = ray.available_resources().get("GPU", 0)
+        cpus_per_trial = max(1, available_cpus / num_samples)
+        gpus_per_trial = available_gpus / num_samples if available_gpus else 0
 
-            # Ensure at least one CPU is used per trial, and adjust GPUs according to availability
-            cpus_per_trial = max(1, num_cpus // num_samples)
-            gpus_per_trial = num_gpus / num_samples if num_gpus > 0 else 0
-
-            def train_with_config(config):
-                # Apply the hyperparameters from Ray Tune config to the model
-                torch.cuda.empty_cache()
-                self.apply_config(config)
-
-                # Set up the optimizer using the config
-                optimizer = self.configure_optimizer(config["lr"], config["optimizer"])
-
-                # Run the training and validation for the current trial
-                self.train_model(
-                    train_loader, validation_loader, optimizer, max_num_epochs
-                )
-
-                # Here, we assume `validate_epoch` returns the average validation loss
-                val_loss = self.validate_epoch(validation_loader)
-                tune.report(loss=val_loss)
-
-            # Define the hyperparameter search space
-            search_space = {
-                "lr": tune.loguniform(1e-5, 1e-1),
-                "batch_size": tune.choice([128, 256, 512, 1024]),
-                "activation": tune.choice(["relu", "leaky_relu", "tanh", "sigmoid"]),
-                "optimizer": tune.choice(["adam", "sgd"]),
-                # ... include other hyperparameters as needed ...
-            }
-
-            # Setup the experiment with the ASHA scheduler and CLIReporter
-            scheduler = ASHAScheduler(metric="loss", mode="min", max_t=max_num_epochs)
-            reporter = CLIReporter(metric_columns=["loss", "training_iteration"])
-
-            # Run the Ray Tune experiment
-            result = tune.run(
-                train_with_config,
-                resources_per_trial={"cpu": cpus_per_trial, "gpu": gpus_per_trial},
-                config=search_space,
+        # Setup the experiment
+        tuner = Tuner(
+            tune.with_parameters(
+                self.train_with_config,
+                train_loader_ref=train_loader_ref,  # Pass object references
+                validation_loader_ref=validation_loader_ref,
+            ),
+            tune_config=tune.TuneConfig(
+                metric="loss",
+                mode="min",
+                scheduler=ASHAScheduler(max_t=max_num_epochs),
                 num_samples=num_samples,
-                scheduler=scheduler,
-                progress_reporter=reporter,
-            )
+            ),
+            run_config=air.RunConfig(
+                name="cvae_tuning",
+                local_dir=current_working_dir,
+            ),
+            param_space=search_space,
+        )
+        # Start the tuning session
+        results = tuner.fit()
 
-            # Shutdown Ray to free up resources
-            ray.shutdown()
+        best_result = results.get_best_result(metric="loss", mode="min")
+        best_config = best_result.config
+        print("Best hyperparameters found were: ", best_config)
 
-            best_config = result.get_best_config(metric="loss", mode="min")
-            print("Best hyperparameters found were: ", best_config)
-            return best_config
-        finally:
-            # Ensure Ray is properly shut down and resources are released
-            ray.shutdown()
+        ray.shutdown()
+        return best_config
