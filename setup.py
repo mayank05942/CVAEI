@@ -10,8 +10,6 @@ setup(
         "numpy",
         "matplotlib",
         "seaborn",
-        "ray",
-        "pyarrow",
-        "optuna",
+        "hyperopt",
     ],
 )
