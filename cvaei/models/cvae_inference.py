@@ -4,19 +4,13 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.nn import functional as F
-import os
+import torch.optim as optim
 
-import ray
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
-from ray.tune.tuner import Tuner
-from ray import air, tune
-from ray.tune import PlacementGroupFactory
-from ray import train as ray_train
 
 from .model_base import ModelBase
 from .model_defination import Decoder, Encoder
+
+from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, rand
 
 
 class CVAE(ModelBase):
@@ -44,12 +38,7 @@ class CVAE(ModelBase):
         self.w_recon = kwargs.get("w_recon", 1.0)
         self.w_misfit = kwargs.get("w_misfit", 1.0)
 
-        activation_fn_mapping = {
-            "relu": nn.ReLU(),
-            "leaky_relu": nn.LeakyReLU(),
-            "tanh": nn.Tanh(),
-            "sigmoid": nn.Sigmoid(),
-        }
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.training_losses = {
             "total_loss": [],
@@ -411,89 +400,86 @@ class CVAE(ModelBase):
         plt.tight_layout()
         plt.show()
 
-    def train_with_config(self, config, train_loader, validation_loader):
-        # Access the checkpoint using Ray's recommended approach
-        checkpoint = ray_train.get_checkpoint()
-        if checkpoint is not None:
-            with checkpoint.as_directory() as checkpoint_dir:
-                # Load model state from the checkpoint directory if applicable
-                model_state_path = os.path.join(checkpoint_dir, "model_state.pth")
-                if os.path.exists(model_state_path):
-                    state_dict = torch.load(model_state_path)
-                    # Assuming your model's state dict can be directly loaded here
-                    # Adjust if you have separate components like encoder/decoder
-                    self.load_state_dict(state_dict)
-
-        torch.cuda.empty_cache()
-        self.apply_config(
-            config
-        )  # Make sure this adjusts your model parameters based on the config
-
-        optimizer = self.configure_optimizer(config["lr"], config["optimizer"])
-
-        # Implement the actual training loop here
-        # Ensure train_model is adapted to use without checkpoint_dir and correctly trains the model
-        self.train_model(
-            train_loader, validation_loader, optimizer, config["num_epochs"]
-        )
-
-        # Validation logic after training
-        val_loss = self.validate_epoch(
-            validation_loader
-        )  # Ensure this function returns validation loss
-        tune.report(loss=val_loss)  # Report the validation loss to Ray Tune
-
-    def tune_hyperparameters(
-        self, train_loader, validation_loader, num_samples=10, max_num_epochs=1
+    def tune_model(
+        self,
+        train_loader,
+        validation_loader,
+        theta_normalizer,
+        data_normalizer,
+        forward_model,
+        n_trials=10,
     ):
-        if ray.is_initialized():
-            ray.shutdown()
-        ray.init(log_to_driver=False)
+        """
+        Optimize the hyperparameters of the CVAE model using Hyperopt within the CVAE class.
 
-        train_loader_ref = ray.put(train_loader)
-        validation_loader_ref = ray.put(validation_loader)
+        Parameters:
+        - train_loader: DataLoader for training data.
+        - validation_loader: DataLoader for validation data.
+        - n_trials: The number of optimization trials to run.
+        """
 
-        # Define the hyperparameter search space
+        def objective(hyperparams):
+            # Hyperparameter to be tuned
+            latent_dim_trial = int(hyperparams["latent_dim"])
+
+            # Temporarily adjust the model's hyperparameters
+            original_latent_dim = self.latent_dim
+            self.latent_dim = latent_dim_trial
+
+            # Use a fixed learning rate
+            fixed_lr = 1e-5  # Example fixed learning rate, adjust as needed
+            optimizer = optim.AdamW(self.parameters(), lr=fixed_lr)
+
+            # Training and validation process
+            best_val_loss = float("inf")
+            for epoch in range(10):  # Assuming a fixed number of epochs for simplicity
+                self.train_epoch(
+                    train_loader=train_loader,
+                    optimizer=optimizer,
+                    device=self.device,
+                    epoch=epoch,
+                    epochs=10,
+                    cycle_length=10,
+                    num_cycles=1,
+                    theta_normalizer=theta_normalizer,
+                    data_normalizer=data_normalizer,
+                    forward_model=forward_model,
+                )
+                avg_val_loss = self.validate_epoch(
+                    validation_loader=validation_loader,
+                    device=self.device,
+                    epoch=epoch,
+                    epochs=10,
+                    cycle_length=10,
+                    num_cycles=1,
+                    theta_normalizer=theta_normalizer,
+                    data_normalizer=data_normalizer,
+                    forward_model=forward_model,
+                )
+                best_val_loss = min(best_val_loss, avg_val_loss)
+
+            # Restore original latent dimension before the trial ends
+            self.latent_dim = original_latent_dim
+
+            # Return the loss
+            return {"loss": best_val_loss, "status": STATUS_OK}
+
+        # Define the search space for latent_dim only
         search_space = {
-            "lr": tune.loguniform(1e-5, 1e-4),
-            "optimizer": tune.choice(["adam"]),
-            "num_epochs": tune.choice([1]),  # Adjusted for quick testing
+            "latent_dim": hp.quniform(
+                "latent_dim", 10, 20, 1
+            )  # Example range from 10 to 20
         }
 
-        # Get the current working directory
-        current_working_dir = os.getcwd()
-
-        # Configure the resources for each trial
-        available_cpus = ray.available_resources().get("CPU", 1)
-        available_gpus = ray.available_resources().get("GPU", 0)
-        cpus_per_trial = max(1, available_cpus / num_samples)
-        gpus_per_trial = available_gpus / num_samples if available_gpus else 0
-
-        # Setup the experiment
-        tuner = Tuner(
-            tune.with_parameters(
-                self.train_with_config,
-                train_loader_ref=train_loader_ref,  # Pass object references
-                validation_loader_ref=validation_loader_ref,
-            ),
-            tune_config=tune.TuneConfig(
-                metric="loss",
-                mode="min",
-                scheduler=ASHAScheduler(max_t=max_num_epochs),
-                num_samples=num_samples,
-            ),
-            run_config=air.RunConfig(
-                name="cvae_tuning",
-                local_dir=current_working_dir,
-            ),
-            param_space=search_space,
+        # Run the optimization
+        trials = Trials()
+        best = fmin(
+            fn=objective,
+            space=search_space,
+            algo=tpe.suggest,
+            max_evals=n_trials,
+            trials=trials,
         )
-        # Start the tuning session
-        results = tuner.fit()
 
-        best_result = results.get_best_result(metric="loss", mode="min")
-        best_config = best_result.config
-        print("Best hyperparameters found were: ", best_config)
-
-        ray.shutdown()
-        return best_config
+        best_latent_dim = int(best["latent_dim"])  # Convert to integer
+        print(f"Optimization finished. Best latent_dim: {best_latent_dim}")
