@@ -234,9 +234,8 @@ class CVAE(ModelBase):
         forward_model=None,
         patience=5,
     ):
-        # if device is None:
-        #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.to(self.device)
+
+        self.to(self.device)
 
         print(
             f"Using {'GPU: ' + torch.cuda.get_device_name(self.device) if self.device.type == 'cuda' else 'CPU'} for training."
