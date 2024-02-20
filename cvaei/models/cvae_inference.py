@@ -229,18 +229,17 @@ class CVAE(ModelBase):
         epochs=10,
         cycle_length=10,
         num_cycles=1,
-        device=None,
         theta_normalizer=None,
         data_normalizer=None,
         forward_model=None,
         patience=5,
     ):
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.to(device)
+        # if device is None:
+        #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.to(self.device)
 
         print(
-            f"Using {'GPU: ' + torch.cuda.get_device_name(device) if device.type == 'cuda' else 'CPU'} for training."
+            f"Using {'GPU: ' + torch.cuda.get_device_name(self.device) if self.device.type == 'cuda' else 'CPU'} for training."
         )
 
         best_val_loss = float("inf")
@@ -251,7 +250,7 @@ class CVAE(ModelBase):
             self.train_epoch(
                 train_loader,
                 optimizer,
-                device,
+                self.device,
                 epoch,
                 epochs,
                 cycle_length,
@@ -264,7 +263,7 @@ class CVAE(ModelBase):
             # Validate the performance on validation dataset
             avg_val_loss = self.validate_epoch(
                 validation_loader,
-                device,
+                self.device,
                 epoch,
                 epochs,
                 cycle_length,
