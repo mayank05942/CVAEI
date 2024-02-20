@@ -422,12 +422,15 @@ class CVAE(ModelBase):
             # Hyperparameter to be tuned
             latent_dim_trial = int(hyperparams["latent_dim"])
 
+            # Move model to the correct device at the beginning of each trial
+            self.to(self.device)
+
             # Temporarily adjust the model's hyperparameters
             original_latent_dim = self.latent_dim
             self.latent_dim = latent_dim_trial
 
             # Use a fixed learning rate
-            fixed_lr = 1e-5  # Example fixed learning rate, adjust as needed
+            fixed_lr = 1e-3  # Example fixed learning rate, adjust as needed
             optimizer = optim.AdamW(self.parameters(), lr=fixed_lr)
 
             # Training and validation process
