@@ -3,6 +3,7 @@ import numpy as np
 from cvaei.helper import DataNormalizer
 import matplotlib.pyplot as plt
 import seaborn as sns
+import math
 
 
 class TwoMoons:
@@ -26,59 +27,88 @@ class TwoMoons:
         self.theta_normalizer = None
         self.data_normalizer = None
 
-    def simulator(self, theta, seed=42):
-        """
-        Simulate data using the Two moons model for a batch of parameters.
+    # def simulator(self, theta, seed=1000):
+    #     """
+    #     Simulate data using the Two moons model for a batch of parameters.
 
-        Parameters:
-        - params (torch.Tensor): The batch of parameters for the two moons model. Shape: [batch_size, param_dim]
-        - seed (int): Seed for random number generation to ensure reproducibility.
-        - device (torch.device): The device to perform computations on.
+    #     Parameters:
+    #     - params (torch.Tensor): The batch of parameters for the two moons model. Shape: [batch_size, param_dim]
+    #     - seed (int): Seed for random number generation to ensure reproducibility.
+    #     - device (torch.device): The device to perform computations on.
 
-        Returns:
-        - torch.Tensor: Simulated data based on the two moons model for each set of parameters in the batch.
-        
-        """
-        theta = theta.to(self.device)
-            
-        # Set the random seed for reproducibility if provided
+    #     Returns:
+    #     - torch.Tensor: Simulated data based on the two moons model for each set of parameters in the batch.
+
+    #     """
+    #     theta = theta.to(self.device)
+
+    #     # Set the random seed for reproducibility if provided
+    #     if seed is not None:
+    #         torch.manual_seed(seed)
+
+    #     # Ensure theta is two-dimensional for batch processing
+    #     if theta.dim() == 1:
+    #         theta = theta.unsqueeze(0)  # Convert to shape [1, 2]
+
+    #     batch_size = theta.size(0)
+
+    #     mean_radius = 1.0
+    #     sd_radius = 0.1
+    #     baseoffset = 1.0
+    #     torch.pi = torch.acos(torch.zeros(1)) * 2
+
+    #     a = torch.pi * (torch.rand(batch_size, device=self.device) - 0.5)
+    #     r = mean_radius + torch.randn(batch_size, device=self.device) * sd_radius
+    #     p = torch.stack(
+    #         [r * torch.cos(a) + baseoffset, r * torch.sin(a)], dim=-1
+    #     )  # p shape will be [batch_size, 2]
+
+    #     # Fixed angle for rotation
+    #     ang = torch.tensor(-torch.pi / 4.0, device=self.device)
+    #     c = torch.cos(ang)
+    #     s = torch.sin(ang)
+
+    #     # Apply rotation to theta
+    #     z0 = c * theta[:, 0] - s * theta[:, 1]
+    #     z1 = s * theta[:, 0] + c * theta[:, 1]
+
+    #     # Combine p and rotated theta for final output
+    #     transformed = p + torch.stack(
+    #         [-torch.abs(z0), z1], dim=-1
+    #     )  # Output shape [batch_size, 2]
+
+    #     return transformed
+
+    def simulator(self, thetas, seed=42):
+
         if seed is not None:
             torch.manual_seed(seed)
-        
-        # Ensure theta is two-dimensional for batch processing
-        if theta.dim() == 1:
-            theta = theta.unsqueeze(0)  # Convert to shape [1, 2]
 
-        batch_size = theta.size(0)
-        
-        mean_radius = 1.0
-        sd_radius = 0.1
-        baseoffset = 1.0
-        
-        a = torch.pi * (torch.rand(batch_size, device= self.device) - 0.5)
-        r = mean_radius + torch.randn(batch_size, device= self.device) * sd_radius
-        p = torch.stack([
-            r * torch.cos(a) + baseoffset, 
-            r * torch.sin(a)
-        ], dim=-1)  # p shape will be [batch_size, 2]
-        
-        # Fixed angle for rotation
-        ang = torch.tensor(-torch.pi / 4.0, device=self.device)
-        c = torch.cos(ang)
-        s = torch.sin(ang)
-        
-        # Apply rotation to theta
-        z0 = c * theta[:, 0] - s * theta[:, 1]
-        z1 = s * theta[:, 0] + c * theta[:, 1]
-        
-        # Combine p and rotated theta for final output
-        transformed = p + torch.stack([-torch.abs(z0), z1], dim=-1)  # Output shape [batch_size, 2]
-        
-        return transformed
+        # Ensure theta is 2-dimensional
+        if thetas.dim() == 1:
+            thetas = thetas.unsqueeze(0)
 
-        
+        # Batch size
+        N = thetas.size(0)
 
-                    
+        # Generate random noise
+        alpha = torch.rand(N, device=self.device) * torch.tensor(np.pi) - torch.tensor(
+            0.5 * np.pi, device=self.device
+        )
+        r = 0.1 + 0.01 * torch.randn(N, device=self.device)
+
+        # Calculate positions
+        x1 = r * torch.cos(alpha) + 0.25
+        x2 = r * torch.sin(alpha)
+        y1 = -torch.abs(thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
+            torch.tensor(2.0, device=self.device)
+        )
+        y2 = (-thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
+            torch.tensor(2.0, device=self.device)
+        )
+
+        # Output
+        return torch.stack([x1 + y1, x2 + y2], dim=1)
 
     def prior(self, num_samples):
         """

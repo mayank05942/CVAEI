@@ -41,6 +41,7 @@ class CVAE(ModelBase):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.training_losses = {
+            "beta": [],
             "total_loss": [],
             "recon_loss": [],
             "misfit_loss": [],
@@ -136,15 +137,23 @@ class CVAE(ModelBase):
         device,
         epoch,
         epochs,
-        cycle_length,
         num_cycles,
         theta_normalizer,
         data_normalizer,
         forward_model,
     ):
         self.train()
-        epoch_losses = {"total_loss": 0, "recon_loss": 0, "misfit_loss": 0, "kl_div": 0}
-        epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+        epoch_losses = {
+            "total_loss": 0,
+            "recon_loss": 0,
+            "misfit_loss": 0,
+            "kl_div": 0,
+        }
+        epoch_beta = self.calculate_beta(
+            epoch, epochs, num_cycles, ratio=0.5, start=0, stop=1
+        )
+        # epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+        self.training_losses["beta"].append(epoch_beta)
 
         for data, theta in train_loader:
             optimizer.zero_grad()
@@ -161,17 +170,27 @@ class CVAE(ModelBase):
             loss.backward()
             optimizer.step()
 
+            # epoch_losses["beta"] += epoch_beta
             epoch_losses["total_loss"] += loss.item()
             epoch_losses["recon_loss"] += recon_loss.item()
             epoch_losses["misfit_loss"] += misfit_loss.item()
             epoch_losses["kl_div"] += kl_div.item()
 
         self.update_losses(epoch_losses, train_loader, self.training_losses)
-        epoch_msg = f"Epoch {epoch+1}/{epochs}: Beta: {epoch_beta:.1f}, "
+
+        epoch_msg = f"Epoch {epoch+1}/{epochs}:"
+        # Exclude beta from the losses message, format it separately
         losses_msg = ", ".join(
-            f"{k}: {v[-1]:.4f}" for k, v in self.training_losses.items()
+            f"{k}: {v[-1]:.4f}" for k, v in self.training_losses.items() if k != "beta"
         )
-        print(epoch_msg + losses_msg)
+        beta_msg = f"Beta: {self.training_losses['beta'][-1]:.1f}"
+        print(epoch_msg + " " + beta_msg + ", " + losses_msg)
+
+        # epoch_msg = f"Epoch {epoch+1}/{epochs}: Beta: {epoch_beta:.1f}, "
+        # losses_msg = ", ".join(
+        #     f"{k}: {v[-1]:.4f}" for k, v in self.training_losses.items()
+        # )
+        # print(epoch_msg + losses_msg)
 
     def validate_epoch(
         self,
@@ -179,7 +198,6 @@ class CVAE(ModelBase):
         device,
         epoch,
         epochs,
-        cycle_length,
         num_cycles,
         theta_normalizer,
         data_normalizer,
@@ -192,7 +210,10 @@ class CVAE(ModelBase):
             "misfit_loss": 0,
             "kl_div": 0,
         }
-        epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+        # epoch_beta = self.calculate_beta(epoch, epochs, cycle_length, num_cycles)
+        epoch_beta = self.calculate_beta(
+            epoch, epochs, num_cycles, ratio=0.5, start=0, stop=1
+        )
 
         with torch.no_grad():
             for data, theta in validation_loader:
@@ -214,7 +235,7 @@ class CVAE(ModelBase):
 
         self.update_losses(val_epoch_losses, validation_loader, self.validation_losses)
 
-        epoch_msg = f"Epoch {epoch+1}/{epochs} Validation: Beta: {epoch_beta:.1f}, "
+        epoch_msg = f"Epoch {epoch+1}/{epochs} Validation: "
         losses_msg = ", ".join(f"{k}: {v:.4f}" for k, v in val_epoch_losses.items())
         print(epoch_msg + losses_msg)
         print()
@@ -227,7 +248,6 @@ class CVAE(ModelBase):
         validation_loader,
         optimizer,
         epochs=10,
-        cycle_length=10,
         num_cycles=1,
         theta_normalizer=None,
         data_normalizer=None,
@@ -252,7 +272,6 @@ class CVAE(ModelBase):
                 self.device,
                 epoch,
                 epochs,
-                cycle_length,
                 num_cycles,
                 theta_normalizer,
                 data_normalizer,
@@ -265,7 +284,6 @@ class CVAE(ModelBase):
                 self.device,
                 epoch,
                 epochs,
-                cycle_length,
                 num_cycles,
                 theta_normalizer,
                 data_normalizer,
@@ -295,24 +313,55 @@ class CVAE(ModelBase):
         print("Training completed.")
 
     @staticmethod
-    def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
+    # def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
+    #     """
+    #     Calculate the beta value for KL divergence regularization based on the current epoch.
+
+    #     Parameters:
+    #     epoch (int): Current training epoch.
+    #     total_epochs (int): Total number of epochs for training.
+    #     cycle_length (int): Length of a beta cycle.
+    #     num_cycles (int): Number of cycles in the total epochs.
+
+    #     Returns:
+    #     float: Calculated beta value.
+    #     """
+    #     cycle_epoch = epoch % cycle_length
+    #     if cycle_epoch < (cycle_length / num_cycles):
+    #         # Linearly increase
+    #         return cycle_epoch / (cycle_length / num_cycles)
+    #     return 1  # Remain at 1 for the rest of the cycle
+
+    def calculate_beta(epoch, total_epochs, n_cycle, ratio=0.5, start=0, stop=1):
         """
-        Calculate the beta value for KL divergence regularization based on the current epoch.
+        Calculate the cyclical beta value for KL divergence regularization based on the current epoch.
 
         Parameters:
         epoch (int): Current training epoch.
         total_epochs (int): Total number of epochs for training.
-        cycle_length (int): Length of a beta cycle.
-        num_cycles (int): Number of cycles in the total epochs.
+        n_cycle (int): Number of cycles over total epochs.
+        ratio (float): Portion of the cycle for beta to increase.
+        start (float): Starting value of beta.
+        stop (float): Stopping value of beta.
 
         Returns:
         float: Calculated beta value.
         """
-        cycle_epoch = epoch % cycle_length
-        if cycle_epoch < (cycle_length / num_cycles):
-            # Linearly increase
-            return cycle_epoch / (cycle_length / num_cycles)
-        return 1  # Remain at 1 for the rest of the cycle
+        # Calculate the period of each cycle and the step for linear increase
+        period = total_epochs / n_cycle
+        step = (stop - start) / (period * ratio)
+
+        # Determine the current cycle
+        cycle = int(epoch // period)
+        cycle_epoch = epoch % period
+
+        # Increase beta linearly for a portion of the cycle, then hold
+        if cycle_epoch < (period * ratio):
+            beta = start + cycle_epoch * step
+        else:
+            beta = stop
+
+        return beta
 
     def get_posterior(
         self, observed_data, num_samples=10000, latent_dim=None, device=None
@@ -397,6 +446,35 @@ class CVAE(ModelBase):
 
         plt.tight_layout()
         plt.show()
+
+    def plot_beta(self):
+        """Plot the beta value across training epochs."""
+
+        plt.figure(figsize=(12, 6))
+        beta_values = self.training_losses["beta"]
+        plt.plot(beta_values, label="Cyclical Beta", marker="o")
+        plt.xlabel("Epoch")
+        plt.ylabel("Beta Value")
+        plt.title("Cyclical Beta Schedule Across Epochs")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        # plt.figure(figsize=(10, 5))
+
+        # plt.plot(
+        #     self.training_losses["beta"],
+        #     label="Beta Value",
+        #     linewidth=2,
+        #     marker="o",
+        #     markersize=4,
+        # )
+        # plt.title("Beta Value Across Training Epochs")
+        # plt.xlabel("Epoch")
+        # plt.ylabel("Beta Value")
+        # plt.legend()
+        # plt.grid(True)
+        # plt.show()
 
     def tune_model(
         self,
