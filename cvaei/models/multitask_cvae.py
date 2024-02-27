@@ -1,3 +1,5 @@
+from .model_base import ModelBase
+from .model_defination import MultiTaskDecoder, Encoder
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
@@ -7,30 +9,18 @@ from torch.nn import functional as F
 import torch.optim as optim
 
 
-from .model_base import ModelBase
-from .model_defination import Decoder, Encoder
-
-from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, rand
-
-
-class CVAE(ModelBase):
-    """
-    Defines the Conditional Variational Autoencoder.
-    Implements the definition, training and prediction pipeline.
-    """
-
+class MultiTaskCVAE(nn.Module):
     def __init__(
         self,
-        input_dim: int,
-        latent_dim: int,
-        output_dim: int,
-        conditional_dim: int,
+        input_dim,
+        latent_dim,
+        conditional_dim,
         encoder_hidden_dims: List[int],
         decoder_hidden_dims: List[int],
         activation_fn: nn.Module = nn.ReLU(),
         **kwargs,  # Accept additional keyword arguments
     ):
-        super(CVAE, self).__init__()
+        super(MultiTaskCVAE, self).__init__()
 
         self.latent_dim = latent_dim
         self.input_dim = input_dim
@@ -54,38 +44,40 @@ class CVAE(ModelBase):
             "kl_div": [],
         }
 
+        # Initialize the encoder and decoder with the provided dimensions
         self.encoder = Encoder(
-            input_dim=input_dim,
-            latent_dim=latent_dim,
+            input_dim,
+            latent_dim,
             hidden_dims=encoder_hidden_dims,
             activation_fn=activation_fn,
         )
-
-        self.decoder = Decoder(
+        self.decoder = MultiTaskDecoder(
             latent_dim=latent_dim,
-            output_dim=output_dim,
+            input_dim=input_dim,
             conditional_dim=conditional_dim,
             hidden_dims=decoder_hidden_dims,
             activation_fn=activation_fn,
         )
 
-    def encode(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.encoder(input)
+    def encode(self, x):
+        mu, logvar = self.encoder(x)
+        return mu, logvar
 
-    def decode(self, z: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
-        return self.decoder(z, condition)
-
-    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+    def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(
-        self, input_theta: torch.Tensor, conditional_data: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        mu, logvar = self.encode(input_theta)
+    def decode(self, z, cond):
+        # Directly return the two outputs from the MultiTaskDecoder
+        recon_x1, recon_x2 = self.decoder(z, cond)
+        return recon_x1, recon_x2
+
+    def forward(self, x, cond):
+        mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        return self.decode(z, conditional_data), mu, logvar
+        recon_x1, recon_x2 = self.decode(z, cond)
+        return recon_x1, recon_x2, mu, logvar
 
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
         # Reconstruction loss compares the input x to its reconstruction x_hat
@@ -110,17 +102,13 @@ class CVAE(ModelBase):
         validation=True,
     ):
         data, theta = data.to(device), theta.to(device)
-        theta_pred, mu, logvar = self(theta, data)  # Forward pass through the model
-        theta_pred_unnorm = theta_normalizer.inverse_transform(theta_pred)
-        y_pred_unnorm = forward_model(theta_pred_unnorm)
-        y_pred_norm = data_normalizer.transform(y_pred_unnorm).to(device)
-
-        if y_pred_norm.dim() == 3:
-            y_pred_norm = y_pred_norm.squeeze(1)
+        theta_pred, data_pred, mu, logvar = self(
+            theta, data
+        )  # Forward pass through the model
 
         # Compute the loss
         total_loss, recon_loss, misfit_loss, kl_div, beta = self.loss_function(
-            theta, theta_pred, data, y_pred_norm, mu, logvar, epoch_beta
+            theta, theta_pred, data, data_pred, mu, logvar, epoch_beta
         )
 
         return total_loss, recon_loss, misfit_loss, kl_div, beta
@@ -185,12 +173,6 @@ class CVAE(ModelBase):
         )
         beta_msg = f"Beta: {self.training_losses['beta'][-1]:.1f}"
         print(epoch_msg + " " + beta_msg + ", " + losses_msg)
-
-        # epoch_msg = f"Epoch {epoch+1}/{epochs}: Beta: {epoch_beta:.1f}, "
-        # losses_msg = ", ".join(
-        #     f"{k}: {v[-1]:.4f}" for k, v in self.training_losses.items()
-        # )
-        # print(epoch_msg + losses_msg)
 
     def validate_epoch(
         self,
@@ -313,25 +295,6 @@ class CVAE(ModelBase):
         print("Training completed.")
 
     @staticmethod
-    # def calculate_beta(epoch, total_epochs, cycle_length, num_cycles):
-    #     """
-    #     Calculate the beta value for KL divergence regularization based on the current epoch.
-
-    #     Parameters:
-    #     epoch (int): Current training epoch.
-    #     total_epochs (int): Total number of epochs for training.
-    #     cycle_length (int): Length of a beta cycle.
-    #     num_cycles (int): Number of cycles in the total epochs.
-
-    #     Returns:
-    #     float: Calculated beta value.
-    #     """
-    #     cycle_epoch = epoch % cycle_length
-    #     if cycle_epoch < (cycle_length / num_cycles):
-    #         # Linearly increase
-    #         return cycle_epoch / (cycle_length / num_cycles)
-    #     return 1  # Remain at 1 for the rest of the cycle
-
     def calculate_beta(epoch, total_epochs, n_cycle, ratio=0.5, start=0, stop=1):
         """
         Calculate the cyclical beta value for KL divergence regularization based on the current epoch.
@@ -405,7 +368,7 @@ class CVAE(ModelBase):
             y = observed_data.repeat(num_samples, 1)
 
             # zy = torch.cat((z, y), dim=1)
-            posterior_samples = self.decoder(z, y)
+            posterior_samples, _ = self.decoder(z, y)
 
             # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
 
@@ -459,106 +422,3 @@ class CVAE(ModelBase):
         plt.legend()
         plt.grid(True)
         plt.show()
-
-        # plt.figure(figsize=(10, 5))
-
-        # plt.plot(
-        #     self.training_losses["beta"],
-        #     label="Beta Value",
-        #     linewidth=2,
-        #     marker="o",
-        #     markersize=4,
-        # )
-        # plt.title("Beta Value Across Training Epochs")
-        # plt.xlabel("Epoch")
-        # plt.ylabel("Beta Value")
-        # plt.legend()
-        # plt.grid(True)
-        # plt.show()
-
-    def tune_model(
-        self,
-        train_loader,
-        validation_loader,
-        theta_normalizer,
-        data_normalizer,
-        forward_model,
-        n_trials=10,
-    ):
-        """
-        Optimize the hyperparameters of the CVAE model using Hyperopt within the CVAE class.
-
-        Parameters:
-        - train_loader: DataLoader for training data.
-        - validation_loader: DataLoader for validation data.
-        - n_trials: The number of optimization trials to run.
-        """
-
-        def objective(hyperparams):
-            # Hyperparameter to be tuned
-            latent_dim_trial = int(hyperparams["latent_dim"])
-
-            # Move model to the correct device at the beginning of each trial
-            self.to(self.device)
-
-            # Temporarily adjust the model's hyperparameters
-            original_latent_dim = self.latent_dim
-            self.latent_dim = latent_dim_trial
-
-            # Use a fixed learning rate
-            fixed_lr = 1e-3  # Example fixed learning rate, adjust as needed
-            optimizer = optim.AdamW(self.parameters(), lr=fixed_lr)
-
-            # Training and validation process
-            best_val_loss = float("inf")
-            for epoch in range(10):  # Assuming a fixed number of epochs for simplicity
-                self.train_epoch(
-                    train_loader=train_loader,
-                    optimizer=optimizer,
-                    device=self.device,
-                    epoch=epoch,
-                    epochs=10,
-                    cycle_length=10,
-                    num_cycles=1,
-                    theta_normalizer=theta_normalizer,
-                    data_normalizer=data_normalizer,
-                    forward_model=forward_model,
-                )
-                avg_val_loss = self.validate_epoch(
-                    validation_loader=validation_loader,
-                    device=self.device,
-                    epoch=epoch,
-                    epochs=10,
-                    cycle_length=10,
-                    num_cycles=1,
-                    theta_normalizer=theta_normalizer,
-                    data_normalizer=data_normalizer,
-                    forward_model=forward_model,
-                )
-                best_val_loss = min(best_val_loss, avg_val_loss)
-
-            # Restore original latent dimension before the trial ends
-            self.latent_dim = original_latent_dim
-
-            # Return the loss
-            return {"loss": best_val_loss, "status": STATUS_OK}
-
-        # Define the search space for latent_dim only
-        search_space = {
-            "latent_dim": hp.quniform(
-                "latent_dim", 10, 20, 1
-            )  # Example range from 10 to 20
-        }
-
-        # Run the optimization
-        trials = Trials()
-        best = fmin(
-            fn=objective,
-            space=search_space,
-            algo=tpe.suggest,
-            max_evals=n_trials,
-            trials=trials,
-        )
-
-        best_latent_dim = int(best["latent_dim"])  # Convert to integer
-        print(f"Optimization finished. Best latent_dim: {best_latent_dim}")

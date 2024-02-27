@@ -79,36 +79,69 @@ class TwoMoons:
 
     #     return transformed
 
-    def simulator(self, thetas, seed=42):
+    # def simulator(self, thetas, seed=42):
+
+    #     if seed is not None:
+    #         torch.manual_seed(seed)
+
+    #     # Ensure theta is 2-dimensional
+    #     if thetas.dim() == 1:
+    #         thetas = thetas.unsqueeze(0)
+
+    #     # Batch size
+    #     N = thetas.size(0)
+
+    #     # Generate random noise
+    #     alpha = torch.rand(N, device=self.device) * torch.tensor(np.pi) - torch.tensor(
+    #         0.5 * np.pi, device=self.device
+    #     )
+    #     r = 0.1 + 0.01 * torch.randn(N, device=self.device)
+
+    #     # Calculate positions
+    #     x1 = r * torch.cos(alpha) + 0.25
+    #     x2 = r * torch.sin(alpha)
+    #     y1 = -torch.abs(thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
+    #         torch.tensor(2.0, device=self.device)
+    #     )
+    #     y2 = (-thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
+    #         torch.tensor(2.0, device=self.device)
+    #     )
+
+    #     # Output
+    #     return torch.stack([x1 + y1, x2 + y2], dim=1)
+
+    def simulator(self, theta, seed=42):
 
         if seed is not None:
             torch.manual_seed(seed)
 
         # Ensure theta is 2-dimensional
-        if thetas.dim() == 1:
-            thetas = thetas.unsqueeze(0)
+        # if theta.dim() == 1:
 
-        # Batch size
-        N = thetas.size(0)
+        theta = theta.squeeze(0)
 
-        # Generate random noise
-        alpha = torch.rand(N, device=self.device) * torch.tensor(np.pi) - torch.tensor(
-            0.5 * np.pi, device=self.device
+        torch.manual_seed(52)
+
+        alpha = torch.empty(1, device=self.device).uniform_(
+            -0.5 * torch.pi, 0.5 * torch.pi
         )
-        r = 0.1 + 0.01 * torch.randn(N, device=self.device)
+        r = torch.empty(1, device=self.device).normal_(mean=0.1, std=0.01)
 
-        # Calculate positions
-        x1 = r * torch.cos(alpha) + 0.25
-        x2 = r * torch.sin(alpha)
-        y1 = -torch.abs(thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
-            torch.tensor(2.0, device=self.device)
+        # Forward process
+        rhs1 = torch.tensor(
+            [r * torch.cos(alpha) + 0.25, r * torch.sin(alpha)], device=self.device
         )
-        y2 = (-thetas[:, 0] + thetas[:, 1]) / torch.sqrt(
-            torch.tensor(2.0, device=self.device)
+        rhs2 = torch.tensor(
+            [
+                -torch.abs(theta[0] + theta[1])
+                / torch.sqrt(torch.tensor(2.0, device=self.device)),
+                (-theta[0] + theta[1])
+                / torch.sqrt(torch.tensor(2.0, device=self.device)),
+            ],
+            device=self.device,
         )
 
-        # Output
-        return torch.stack([x1 + y1, x2 + y2], dim=1)
+        return rhs1 + rhs2
 
     def prior(self, num_samples):
         """
@@ -135,7 +168,13 @@ class TwoMoons:
         """
 
         theta = self.prior(num_samples=num_samples)
-        data = self.simulator(theta)
+        n_sim, data_dim = theta.shape
+        # data = self.simulator(theta)
+        data = torch.zeros((num_samples, 2), device=self.device)
+
+        for i in range(num_samples):
+
+            data[i, :] = self.simulator(theta[i, :])
         return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
