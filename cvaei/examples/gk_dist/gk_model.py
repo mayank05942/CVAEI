@@ -26,106 +26,210 @@ class GKDistribution:
         self.theta_normalizer = None
         self.data_normalizer = None
 
-    def simulator(self, params, c=0.8, n_obs=1000, seed=400):
-        """
-        Vectorized sampling from the g-and-k distribution using provided parameters.
+    # def simulator(self, params, c=0.8, n_obs=1000, seed=400):
+    #     """
+    #     Vectorized sampling from the g-and-k distribution using provided parameters.
 
-        Parameters:
-        - params (torch.Tensor): The parameters for the GK model [A, B, g, k] for each sample.
-        - c (float, optional): Overall asymmetry parameter, default is 0.8.
-        - seed (int, optional): Seed for random number generation to ensure reproducibility.
+    #     Parameters:
+    #     - params (torch.Tensor): The parameters for the GK model [A, B, g, k] for each sample.
+    #     - c (float, optional): Overall asymmetry parameter, default is 0.8.
+    #     - seed (int, optional): Seed for random number generation to ensure reproducibility.
 
-        Returns:
-        - torch.Tensor: Simulated data based on the GK model.
-        """
+    #     Returns:
+    #     - torch.Tensor: Simulated data based on the GK model.
+    #     """
 
-        if seed is not None:
-            torch.manual_seed(seed)
+    #     if seed is not None:
+    #         torch.manual_seed(seed)
 
-        if params.ndim == 1:
-            params = params.unsqueeze(0)
+    #     if params.ndim == 1:
+    #         params = params.unsqueeze(0)
 
-        params = params.to(device=self.device)
+    #     params = params.to(device=self.device)
 
-        A, B, g, k = params.t()
+    #     A, B, g, k = params.t()
 
-        # Generate standard normal variates for each set of parameters, shape [N, n_obs]
-        z = torch.randn((len(params), n_obs), device=self.device)
+    #     # Generate standard normal variates for each set of parameters, shape [N, n_obs]
+    #     z = torch.randn((len(params), n_obs), device=self.device)
 
-        # Evaluate the quantile function Q_{gnk} for each set of parameters, expanded for each observation
-        term = 1 + c * (
-            (1 - torch.exp(-g.unsqueeze(1) * z)) / (1 + torch.exp(-g.unsqueeze(1) * z))
-        )
-        y = (
-            A.unsqueeze(1)
-            + B.unsqueeze(1) * term * (1 + z.pow(2)).pow(k.unsqueeze(1)) * z
-        )
+    #     # Evaluate the quantile function Q_{gnk} for each set of parameters, expanded for each observation
+    #     term = 1 + c * (
+    #         (1 - torch.exp(-g.unsqueeze(1) * z)) / (1 + torch.exp(-g.unsqueeze(1) * z))
+    #     )
+    #     y = (
+    #         A.unsqueeze(1)
+    #         + B.unsqueeze(1) * term * (1 + z.pow(2)).pow(k.unsqueeze(1)) * z
+    #     )
 
-        y = self.clean_data(y)
+    #     # y = self.clean_data(y)
 
-        return y
-
-    def prior(self, num_samples):
-        """
-        Sample parameters from the prior distribution using PyTorch.
-        """
-        # Define the range of the uniform distribution
-        low = torch.tensor([0.1], device=self.device)
-        high = torch.tensor([5.0], device=self.device)
-
-        # Create the uniform distribution object
-        distribution = uniform.Uniform(low, high)
-
-        # Sample from the distribution and remove the extra dimension with squeeze()
-        A = distribution.sample((num_samples,)).squeeze(-1)
-        B = distribution.sample((num_samples,)).squeeze(-1)
-        g = distribution.sample((num_samples,)).squeeze(-1)
-        k = distribution.sample((num_samples,)).squeeze(-1)
-        # Stack the samples into a single tensor
-        return torch.stack((A, B, g, k), dim=1)
+    #     return y
 
     # def prior(self, num_samples):
     #     """
     #     Sample parameters from the prior distribution using PyTorch.
     #     """
-    #     A = (
-    #         torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-    #     )  # Uniformly distributed between 0.1 and 5
-    #     B = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-    #     g = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
-    #     k = torch.rand(num_samples, device=self.device) * 4.9 + 0.1
+    #     # Define the range of the uniform distribution
+    #     low = torch.tensor([0.1], device=self.device)
+    #     high = torch.tensor([5.0], device=self.device)
+
+    #     # Create the uniform distribution object
+    #     distribution = uniform.Uniform(low, high)
+
+    #     # Sample from the distribution and remove the extra dimension with squeeze()
+    #     A = distribution.sample((num_samples,)).squeeze(-1)
+    #     B = distribution.sample((num_samples,)).squeeze(-1)
+    #     g = distribution.sample((num_samples,)).squeeze(-1)
+    #     k = distribution.sample((num_samples,)).squeeze(-1)
+    #     # Stack the samples into a single tensor
     #     return torch.stack((A, B, g, k), dim=1)
 
-    def clean_data(self, data, lower_bound=-10, upper_bound=50, seed=55):
+    # def clean_data(self, data, lower_bound=-10, upper_bound=50, seed=55):
+    #     """
+    #     Clean the data by replacing outliers with random values within specified bounds, using self.device.
+    #     """
+    #     if seed is not None:
+    #         torch.manual_seed(seed)
+
+    #     # Ensure data is on the specified device
+    #     data = data.to(self.device)
+
+    #     # Generate a mask for values outside the bounds
+    #     mask = (data < lower_bound) | (data > upper_bound)
+
+    #     # Generate random replacements on the correct device
+    #     random_replacements = lower_bound + (upper_bound - lower_bound) * torch.rand(
+    #         mask.sum(), device=self.device
+    #     )
+
+    #     # Apply replacements
+    #     data[mask] = random_replacements
+
+    #     return data
+
+    # def generate_data(self, num_samples=1000, seed=42):
+    #     """
+    #     Generate data samples based on the prior and vectorized simulator.
+    #     """
+    #     theta = self.prior(num_samples=num_samples)
+    #     data = self.simulator(theta, seed=seed)  # Vectorized simulation
+    #     data = self.clean_data(data)
+    #     # data = self.clean_data(data)
+    #     return theta, data
+
+    def GNK(self, A, B, g, k, c=0.8, n_obs=1000, batch_size=1, seed=None):
+        """Sample the univariate g-and-k distribution.
+
+        The quantile function of g-and-k distribution is defined as follows:
+
+        Q_{gnk} = A + B * (1 + c * (1 - exp(-g * z(p)) / 1 + exp(-g * z(p))))
+                * (1 + z(p)^2)^k * z(p), where
+
+        z(p) is the p-th standard normal quantile.
+
+        To sample from the g-and-k distribution, draw z(p) ~ N(0, 1) and evaluate Q_{gnk}.
+
+        Parameters
+        ----------
+        A : float or array_like
+            Location parameter.
+        B : float or array_like
+            Scale parameter.
+        g : float or array_like
+            Skewness parameter.
+        k : float or array_like
+            Kurtosis parameter.
+        c : float, optional
+            Overall asymmetry parameter, by default fixed to 0.8 as in Allingham et al. (2009).
+        n_obs : int, optional
+        batch_size : int, optional
+        random_state : np.random.RandomState, optional
+
+        Returns
+        -------
+        array_like
+            Yielded points (the array's shape corresponds to (batch_size, n_points, n_dims).
+
         """
-        Clean the data by replacing outliers with random values within specified bounds, using self.device.
+        np.random.seed(400)
+        # random_state = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
+
+        # Transforming the arrays' shape to be compatible with batching.
+        A = np.asanyarray(A).reshape((-1, 1))
+        B = np.asanyarray(B).reshape((-1, 1))
+        g = np.asanyarray(g).reshape((-1, 1))
+        k = np.asanyarray(k).reshape((-1, 1))
+
+        # Obtaining z(p) ~ N(0, 1).
+        # z = ss.norm.rvs(size=(batch_size, n_obs), random_state=random_state)
+        z = np.random.normal(0, 1, size=n_obs)
+
+        # Evaluating the quantile function Q_{gnk}.
+        y = (
+            A
+            + B
+            * (1 + c * ((1 - np.exp(-g * z)) / (1 + np.exp(-g * z))))
+            * (1 + z**2) ** k
+            * z
+        )
+        y = y.squeeze(-2)
+        return y
+
+    def clean_data(self, data, lower_bound=-10, upper_bound=50, seed=None):
         """
-        if seed is not None:
-            torch.manual_seed(seed)
+        Clean the data according to the specified rule.
+        Values outside the range [lower_bound, upper_bound] are considered outliers
+        and are replaced with values inside the data range at random, using a specified RandomState.
 
-        # Ensure data is on the specified device
-        data = data.to(self.device)
+        Parameters:
+        ----------
+        data : array_like
+            The data to clean.
+        lower_bound : float, optional
+            Lower bound for outlier detection.
+        upper_bound : float, optional
+            Upper bound for outlier detection.
+        random_state : np.random.RandomState, optional
+            An instance of np.random.RandomState for random number generation.
 
-        # Generate a mask for values outside the bounds
-        mask = (data < lower_bound) | (data > upper_bound)
+        Returns:
+        -------
+        array_like
+            Cleaned data.
+        """
+        np.random.seed(45)
+        # random_state = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
 
-        # Generate random replacements on the correct device
-        random_replacements = lower_bound + (upper_bound - lower_bound) * torch.rand(
-            mask.sum(), device=self.device
+        # Identify the indices of outliers
+        outliers_indices = np.where((data < lower_bound) | (data > upper_bound))
+
+        # Generate random data within the range to replace outliers
+        random_replacements = np.random.uniform(
+            low=lower_bound, high=upper_bound, size=len(outliers_indices[0])
         )
 
-        # Apply replacements
-        data[mask] = random_replacements
+        # Replace outliers with random data within the range
+        data[outliers_indices] = random_replacements
 
         return data
+
+    def prior(self, num_samples):
+        A = np.random.uniform(0.1, 5, num_samples)
+        B = np.random.uniform(0.1, 5, num_samples)
+        g = np.random.uniform(0.1, 5, num_samples)
+        k = np.random.uniform(0.1, 5, num_samples)
+        return np.column_stack((A, B, g, k))
 
     def generate_data(self, num_samples=1000, seed=42):
         """
         Generate data samples based on the prior and vectorized simulator.
         """
         theta = self.prior(num_samples=num_samples)
-        data = self.simulator(theta, seed=seed)  # Vectorized simulation
-        # data = self.clean_data(data)
+        data = np.array([self.GNK(*theta) for theta in theta])
+        data = np.array([self.clean_data(y) for y in data])
+        data = self.clean_data(data)
+        data = torch.tensor(data, dtype=torch.float32, device=self.device)
+        theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
         return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
@@ -213,8 +317,12 @@ class GKDistribution:
                 "Normalizers have not been initialized. Call prepare_data first."
             )
 
+        true_params = [[3, 1, 2, 0.5]]
         # Simulate observed data with true parameters
-        observed_data = self.simulator(true_params)
+        observed_data = np.array([self.GNK(*theta) for theta in true_params])
+        observed_data = torch.tensor(
+            observed_data, dtype=torch.float32, device=self.device
+        )
 
         # Normalize the observed data using the previously fit data normalizer
         observed_data_norm = self.data_normalizer.transform(observed_data.unsqueeze(0))
