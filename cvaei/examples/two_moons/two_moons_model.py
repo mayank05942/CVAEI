@@ -110,51 +110,91 @@ class TwoMoons:
     #     # Output
     #     return torch.stack([x1 + y1, x2 + y2], dim=1)
 
+    # def simulator(self, theta, seed=42):
+
+    #     if seed is not None:
+    #         torch.manual_seed(seed)
+
+    #     # Ensure theta is 2-dimensional
+    #     # if theta.dim() == 1:
+
+    #     theta = theta.squeeze(0)
+
+    #     torch.manual_seed(52)
+
+    #     alpha = torch.empty(1, device=self.device).uniform_(
+    #         -0.5 * torch.pi, 0.5 * torch.pi
+    #     )
+    #     r = torch.empty(1, device=self.device).normal_(mean=0.1, std=0.01)
+
+    #     # Forward process
+    #     rhs1 = torch.tensor(
+    #         [r * torch.cos(alpha) + 0.25, r * torch.sin(alpha)], device=self.device
+    #     )
+    #     rhs2 = torch.tensor(
+    #         [
+    #             -torch.abs(theta[0] + theta[1])
+    #             / torch.sqrt(torch.tensor(2.0, device=self.device)),
+    #             (-theta[0] + theta[1])
+    #             / torch.sqrt(torch.tensor(2.0, device=self.device)),
+    #         ],
+    #         device=self.device,
+    #     )
+
+    #     return rhs1 + rhs2
+
+    # def prior(self, num_samples):
+    #     """
+    #     Sample parameters from the prior distribution using PyTorch tensors.
+
+    #     Parameters:
+    #     - num_samples (int): Number of samples to draw.
+
+    #     Returns:
+    #     - torch.Tensor: Sampled parameters from the prior distribution.
+    #     """
+    #     "Prior ~ U(-1,1)"
+    #     return torch.FloatTensor(num_samples, 2).uniform_(-1, 1).to(self.device)
+
+    # def generate_data(self, num_samples=1000):
+    #     """
+    #     Generate data samples based on the prior and simulator.
+
+    #     Parameters:
+    #     - num_samples (int): Number of samples to generate.
+
+    #     Returns:
+    #     - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
+    #     """
+
+    #     theta = self.prior(num_samples=num_samples)
+    #     n_sim, data_dim = theta.shape
+    #     # data = self.simulator(theta)
+    #     data = torch.zeros((num_samples, 2), device=self.device)
+
+    #     for i in range(num_samples):
+
+    #         data[i, :] = self.simulator(theta[i, :])
+    #     return theta, data
+
     def simulator(self, theta, seed=42):
-
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        # Ensure theta is 2-dimensional
-        # if theta.dim() == 1:
-
-        theta = theta.squeeze(0)
-
-        torch.manual_seed(52)
-
-        alpha = torch.empty(1, device=self.device).uniform_(
-            -0.5 * torch.pi, 0.5 * torch.pi
-        )
-        r = torch.empty(1, device=self.device).normal_(mean=0.1, std=0.01)
-
-        # Forward process
-        rhs1 = torch.tensor(
-            [r * torch.cos(alpha) + 0.25, r * torch.sin(alpha)], device=self.device
-        )
-        rhs2 = torch.tensor(
-            [
-                -torch.abs(theta[0] + theta[1])
-                / torch.sqrt(torch.tensor(2.0, device=self.device)),
-                (-theta[0] + theta[1])
-                / torch.sqrt(torch.tensor(2.0, device=self.device)),
-            ],
-            device=self.device,
-        )
-
-        return rhs1 + rhs2
+        np.random.seed(seed)
+        a = np.random.uniform(low=-np.pi / 2.0, high=np.pi / 2.0)
+        # r = np.random.normal(loc=0.1, scale=0.01)
+        r = np.random.normal(loc=1, scale=0.1)
+        p = np.array([r * np.cos(a) + 0.25, r * np.sin(a)])
+        z = p + np.array(
+            [-np.abs(theta[0] + theta[1]), (-theta[0] + theta[1])]
+        ) / np.sqrt(2)
+        return z
 
     def prior(self, num_samples):
-        """
-        Sample parameters from the prior distribution using PyTorch tensors.
-
-        Parameters:
-        - num_samples (int): Number of samples to draw.
-
-        Returns:
-        - torch.Tensor: Sampled parameters from the prior distribution.
-        """
-        "Prior ~ U(-1,1)"
-        return torch.FloatTensor(num_samples, 2).uniform_(-1, 1).to(self.device)
+        dmin = [-1, -1]
+        dmax = [1, 1]
+        # dmin = [-2, -2]
+        # dmax = [2, 2]
+        samples = np.random.uniform(dmin, dmax, (num_samples, len(dmin)))
+        return samples
 
     def generate_data(self, num_samples=1000):
         """
@@ -168,13 +208,9 @@ class TwoMoons:
         """
 
         theta = self.prior(num_samples=num_samples)
-        n_sim, data_dim = theta.shape
-        # data = self.simulator(theta)
-        data = torch.zeros((num_samples, 2), device=self.device)
-
-        for i in range(num_samples):
-
-            data[i, :] = self.simulator(theta[i, :])
+        data = np.array([self.simulator(t) for t in theta])
+        data = torch.tensor(data, dtype=torch.float32, device=self.device)
+        theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
         return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
