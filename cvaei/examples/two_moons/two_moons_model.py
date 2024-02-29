@@ -7,7 +7,7 @@ import math
 
 
 class TwoMoons:
-    def __init__(self, obs_data=None):
+    def __init__(self, obs_data=None, device=None):
         """
         Initialize the Two Moon model with optional observed data.
 
@@ -15,7 +15,10 @@ class TwoMoons:
         - obs_data (torch.Tensor, optional): Observed data for the Two Moons model.
         """
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = torch.device(device)
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if obs_data is None:
             self.obs_data = torch.tensor(

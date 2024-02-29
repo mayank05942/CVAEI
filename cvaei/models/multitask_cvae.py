@@ -18,6 +18,7 @@ class MultiTaskCVAE(nn.Module):
         encoder_hidden_dims: List[int],
         decoder_hidden_dims: List[int],
         activation_fn: nn.Module = nn.ReLU(),
+        device=None,
         **kwargs,  # Accept additional keyword arguments
     ):
         super(MultiTaskCVAE, self).__init__()
@@ -28,7 +29,10 @@ class MultiTaskCVAE(nn.Module):
         self.w_recon = kwargs.get("w_recon", 1.0)
         self.w_misfit = kwargs.get("w_misfit", 1.0)
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = torch.device(device)
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.training_losses = {
             "beta": [],
