@@ -133,6 +133,7 @@ class MultiTaskCVAE(nn.Module):
         theta_normalizer,
         data_normalizer,
         forward_model,
+        max_grad_norm=1.0,
     ):
         self.train()
         epoch_losses = {
@@ -160,6 +161,10 @@ class MultiTaskCVAE(nn.Module):
                 validation=False,
             )
             loss.backward()
+
+            # Clip gradients
+            torch.nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
+
             optimizer.step()
 
             # epoch_losses["beta"] += epoch_beta
