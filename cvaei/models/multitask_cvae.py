@@ -19,6 +19,9 @@ class MultiTaskCVAE(nn.Module):
         decoder_hidden_dims: List[int],
         activation_fn: nn.Module = nn.ReLU(),
         device=None,
+        w_recon=1.0,  # Explicit parameters
+        w_misfit=1.0,
+        kld=1.0,
         **kwargs,  # Accept additional keyword arguments
     ):
         super(MultiTaskCVAE, self).__init__()
@@ -26,9 +29,13 @@ class MultiTaskCVAE(nn.Module):
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.conditional_dim = conditional_dim
-        self.w_recon = kwargs.get("w_recon", 1.0)
-        self.w_misfit = kwargs.get("w_misfit", 1.0)
-        self.kld = kwargs.get("kld", 1.0)
+        self.w_recon = w_recon
+        self.w_misfit = w_misfit
+        self.kld = kld
+
+        # self.w_recon = kwargs.get("w_recon", 1.0)
+        # self.w_misfit = kwargs.get("w_misfit", 1.0)
+        # self.kld = kwargs.get("kld", 1.0)
 
         if device is not None:
             self.device = torch.device(device)
