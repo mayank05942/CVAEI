@@ -28,6 +28,7 @@ class MultiTaskCVAE(nn.Module):
         self.conditional_dim = conditional_dim
         self.w_recon = kwargs.get("w_recon", 1.0)
         self.w_misfit = kwargs.get("w_misfit", 1.0)
+        self.kld = kwargs.get("kld", 1.0)
 
         if device is not None:
             self.device = torch.device(device)
@@ -89,7 +90,9 @@ class MultiTaskCVAE(nn.Module):
         # Misfit loss compares the actual y to the predicted y_hat
         misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
         # KL divergence loss
-        kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta
+        kl_div = (
+            -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
+        )
         # Total loss
         total_loss = recon_loss + misfit_loss + kl_div
         return total_loss, recon_loss, misfit_loss, kl_div, beta
