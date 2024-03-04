@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
-import multiprocessing as mp
+import torch.multiprocessing as mp
 
 
 class Villar:
