@@ -7,6 +7,12 @@ from .cvae_inference import CVAE
 from .model_base import ModelBase
 
 # Import Encoder and Decoder classes from model_definition.py
-from .model_defination import Encoder, Decoder, MultiTaskDecoder
+from .model_defination import (
+    Encoder,
+    Decoder,
+    MultiTaskDecoder,
+    CNN_Decoder,
+)
 
 from .multitask_cvae import MultiTaskCVAE
+from .conv_cvae import CNN_CVAE

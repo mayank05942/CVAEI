@@ -11,5 +11,6 @@ setup(
         "matplotlib",
         "seaborn",
         "hyperopt",
+        "gillespy2",
     ],
 )
