@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
-import torch.multiprocessing as mp
+import multiprocessing as mp
 
 
 class Villar:
@@ -20,7 +20,7 @@ class Villar:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if true_params is None:
-            self.true_params = torch.tensor(
+            np.array(
                 [
                     50.0,
                     500.0,
@@ -38,11 +38,10 @@ class Villar:
                     50.0,
                     100.0,
                 ],
-                dtype=torch.float32,
-                device=self.device,
+                dtype=np.float32,
             )
         else:
-            self.true_params = true_params.to(self.device)
+            self.true_params = true_params
 
         self.theta_normalizer = None
         self.data_normalizer = None
@@ -65,9 +64,11 @@ class Villar:
             "theta_r",
         ]
 
-        self.dmin = torch.tensor([0, 100, 0, 20, 10, 1, 1, 0, 0, 0, 0.5, 0, 0, 0, 0])
-        self.dmax = torch.tensor(
-            [80, 600, 4, 60, 60, 7, 12, 2, 3, 0.7, 2.5, 4, 3, 70, 300]
+        self.dmin = np.array(
+            [0, 100, 0, 20, 10, 1, 1, 0, 0, 0, 0.5, 0, 0, 0, 0], dtype=np.float32
+        )
+        self.dmax = np.array(
+            [80, 600, 4, 60, 60, 7, 12, 2, 3, 0.7, 2.5, 4, 3, 70, 300], dtype=np.float32
         )
 
         self.model = Vilar_Oscillator()
@@ -97,26 +98,8 @@ class Villar:
             return res
 
     def prior(self, num_samples):
-        """
-        Sample parameters from the specified uniform distribution using NumPy arrays.
-
-        Parameters:
-        - num_samples (int): Number of samples to draw.
-        - dmin (list): Minimum values for each dimension.
-        - dmax (list): Maximum values for each dimension.
-
-        Returns:
-        - np.ndarray: Sampled parameters from the uniform distribution within dmin and dmax.
-        """
-        dmin = self.dmin.cpu().numpy()
-        dmax = self.dmax.cpu().numpy()
-
-        # Calculate the range for each dimension
-        ranges = dmax - dmin
-
-        # Sample uniformly within the specified range for each dimension
-        samples = np.random.rand(num_samples, len(dmin)) * ranges + dmin
-
+        ranges = self.dmax - self.dmin
+        samples = np.random.rand(num_samples, len(self.dmin)) * ranges + self.dmin
         return samples
 
     def generate_data(self, num_samples=1000):
@@ -131,8 +114,7 @@ class Villar:
         """
         theta = self.prior(num_samples=num_samples)
 
-        ctx = mp.get_context("spawn")
-        with ctx.Pool(processes=4) as pool:
+        with mp.Pool(processes=4) as pool:
             data = pool.map(self.simulator, theta)
         data = np.asarray(data)
 
@@ -186,7 +168,7 @@ class Villar:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = villar_instance.generate_data(num_samples=100)
+            val_theta, val_data = villar_instance.generate_data(num_samples=4)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
