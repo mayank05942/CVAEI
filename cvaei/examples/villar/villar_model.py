@@ -131,7 +131,8 @@ class Villar:
         """
         theta = self.prior(num_samples=num_samples)
 
-        with mp.Pool(processes=4) as pool:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=4) as pool:
             data = pool.map(self.simulator, theta)
         data = np.asarray(data)
 
