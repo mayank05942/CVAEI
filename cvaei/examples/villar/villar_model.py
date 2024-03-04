@@ -65,12 +65,9 @@ class Villar:
             "theta_r",
         ]
 
-        self.dmin = torch.tensor(
-            [0, 100, 0, 20, 10, 1, 1, 0, 0, 0, 0.5, 0, 0, 0, 0], device=self.device
-        )
+        self.dmin = torch.tensor([0, 100, 0, 20, 10, 1, 1, 0, 0, 0, 0.5, 0, 0, 0, 0])
         self.dmax = torch.tensor(
-            [80, 600, 4, 60, 60, 7, 12, 2, 3, 0.7, 2.5, 4, 3, 70, 300],
-            device=self.device,
+            [80, 600, 4, 60, 60, 7, 12, 2, 3, 0.7, 2.5, 4, 3, 70, 300]
         )
 
         self.model = Vilar_Oscillator()
@@ -111,8 +108,8 @@ class Villar:
         Returns:
         - np.ndarray: Sampled parameters from the uniform distribution within dmin and dmax.
         """
-        dmin = np.array(self.dmin)
-        dmax = np.array(self.dmax)
+        dmin = self.dmin.cpu().numpy()
+        dmax = self.dmax.cpu().numpy()
 
         # Calculate the range for each dimension
         ranges = dmax - dmin
