@@ -6,10 +6,11 @@ import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
 import multiprocessing as mp
+import gillespy2
 
 
 class Villar:
-    def __init__(self, true_params=None):
+    def __init__(self, model=None, true_params=None):
         """
         Initialize the MA2 model with optional true parameters.
 
@@ -18,9 +19,10 @@ class Villar:
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = model if model is not None else Vilar_Oscillator()
 
         if true_params is None:
-            np.array(
+            self.true_params = np.array(
                 [
                     50.0,
                     500.0,
@@ -92,7 +94,9 @@ class Villar:
             sp_C = res["C"]
             sp_A = res["A"]
             sp_R = res["R"]
-            return np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+            simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+
+            return simulation_result
 
         else:
             return res
@@ -113,10 +117,13 @@ class Villar:
         - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
         """
         theta = self.prior(num_samples=num_samples)
-
-        with mp.Pool(processes=4) as pool:
+        # Determine the number of processes: max CPUs available - 4
+        max_processes = max(1, mp.cpu_count() - 4)  # Ensure at least one process
+        print("Number of CPU cores being used:", max_processes)
+        with mp.Pool(processes=max_processes) as pool:
             data = pool.map(self.simulator, theta)
         data = np.asarray(data)
+        data = np.squeeze(data, axis=1)
 
         data = torch.tensor(data, dtype=torch.float32, device=self.device)
         theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
@@ -137,9 +144,8 @@ class Villar:
         theta normalizer, and data normalizer. If validation is True, also returns
         (optionally normalized) validation theta and validation data.
         """
-        # Generate training data
-        villar_instance = Villar()
-        train_theta, train_data = villar_instance.generate_data(num_samples=num_samples)
+
+        train_theta, train_data = self.generate_data(num_samples=num_samples)
 
         # Initialize normalizers
         self.theta_normalizer = DataNormalizer()
@@ -168,7 +174,7 @@ class Villar:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = villar_instance.generate_data(num_samples=4)
+            val_theta, val_data = self.generate_data(num_samples=4)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
@@ -211,29 +217,35 @@ class Villar:
         # Simulate observed data with true parameters
         observed_data = self.simulator(true_params)
 
+        observed_data = torch.tensor(
+            observed_data, dtype=torch.float32, device=self.device
+        )
+        print(observed_data.shape)
+
         # Normalize the observed data using the previously fit data normalizer
-        observed_data_norm = self.data_normalizer.transform(observed_data.unsqueeze(0))
+        observed_data_norm = self.data_normalizer.transform(observed_data)
 
         return observed_data_norm
 
     def plot_prior(self, params):
         """
-        Plot scatter plots for the first two parameters out of 15.
+        Plot histogram plots for each of the 15 parameters.
 
         Parameters:
         - params (torch.Tensor): Tensor of parameters, shape Nx15, where each row is a set of parameters.
         """
         params = params.cpu().numpy()
-        plt.figure(figsize=(10, 7))
-        # Plotting only the first two parameters for simplicity
-        for i in range(1, 15):
-            plt.subplot(3, 5, i)  # Adjust subplot grid as needed
-            plt.scatter(params[:, 0], params[:, i], alpha=0.5)
-            plt.title(f"Param 1 vs Param {i+1}")
-            plt.xlabel("Parameter 1")
-            plt.ylabel(f"Parameter {i+1}")
+        plt.figure(figsize=(20, 10))  # Adjust figure size for better visualization
+
+        for i in range(15):
+            plt.subplot(3, 5, i + 1)  # Arrange subplots in a 3x5 grid
+            plt.hist(params[:, i], bins=30, alpha=0.75)
+            plt.title(f"Histogram of Parameter {i+1}")
+            plt.xlabel("Value")
+            plt.ylabel("Frequency")
             plt.grid(True)
-        plt.tight_layout()
+
+        plt.tight_layout()  # Adjust layout to prevent overlap
         plt.show()
 
     def plot_observation(self, observations, num_samples=5):
