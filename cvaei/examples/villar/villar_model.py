@@ -7,10 +7,11 @@ import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
 
-# import multiprocessing as mp
+import multiprocessing as mp
 import gillespy2
 import logging
-from torch.multiprocessing import Pool, set_start_method
+
+# from torch.multiprocessing import Pool, set_start_method
 
 
 class Villar:
@@ -178,7 +179,7 @@ class Villar:
         print("Number of CPU cores being used:", max_processes)
 
         # Use Pool from torch.multiprocessing
-        with Pool(processes=max_processes) as pool:
+        with mp.Pool(processes=max_processes) as pool:
             data = pool.map(self.simulator, theta)
 
         data = np.asarray(data)
