@@ -79,80 +79,80 @@ class Villar:
 
         self.model = Vilar_Oscillator()
 
-    # def simulator(self, params, transform=True):
-
-    #     # Suppress GillesPy2 timeout warnings specifically for this block
-    #     warnings.filterwarnings(
-    #         "ignore", message="GillesPy2 simulation exceeded timeout."
-    #     )
-
-    #     gillespy2_logger = logging.getLogger('GillesPy2')
-    #     original_level = gillespy2_logger.getEffectiveLevel()
-    #     gillespy2_logger.setLevel(logging.ERROR)
-
-    #     solver = SSACSolver(self.model)
-    #     params = params.ravel()
-    #     res = self.model.run(
-    #         solver=solver,
-    #         timeout=0.33,
-    #         variables={
-    #             self.parameter_names[i]: params[i]
-    #             for i in range(len(self.parameter_names))
-    #         },
-    #     )
-
-    #     if res.rc == 33:
-    #         return np.ones((1, 3, 200))
-    #     if transform:
-    #         sp_C = res["C"]
-    #         sp_A = res["A"]
-    #         sp_R = res["R"]
-    #         return np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-
-    #     else:
-    #         return res
-
     def simulator(self, params, transform=True):
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
+        # Suppress GillesPy2 timeout warnings specifically for this block
+        warnings.filterwarnings(
+            "ignore", message="GillesPy2 simulation exceeded timeout."
+        )
 
-            gillespy2_logger = logging.getLogger("GillesPy2")
-            original_level = gillespy2_logger.getEffectiveLevel()
-            gillespy2_logger.setLevel(logging.ERROR)
+        gillespy2_logger = logging.getLogger("GillesPy2")
+        original_level = gillespy2_logger.getEffectiveLevel()
+        gillespy2_logger.setLevel(logging.ERROR)
 
-            try:
+        solver = SSACSolver(self.model)
+        params = params.ravel()
+        res = self.model.run(
+            solver=solver,
+            timeout=0.33,
+            variables={
+                self.parameter_names[i]: params[i]
+                for i in range(len(self.parameter_names))
+            },
+        )
 
-                solver = SSACSolver(self.model)
-                params = params.ravel()
+        if res.rc == 33:
+            return np.ones((1, 3, 200))
+        if transform:
+            sp_C = res["C"]
+            sp_A = res["A"]
+            sp_R = res["R"]
+            return np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
 
-                # GillesPy2 simulation execution
-                res = self.model.run(
-                    solver=solver,
-                    timeout=0.33,  # Adjust timeout as necessary
-                    variables={
-                        self.parameter_names[i]: params[i]
-                        for i in range(len(self.parameter_names))
-                    },
-                )
+        else:
+            return res
 
-                # Process simulation result
-                if res.rc == 33:
-                    # Handling the case where simulation exceeded timeout
-                    return np.ones((1, 3, 200))  # Return a default or error value
+    # def simulator(self, params, transform=True):
 
-                if transform:
+    #     with warnings.catch_warnings():
+    #         warnings.simplefilter("ignore", category=UserWarning)
 
-                    sp_C = res["C"]
-                    sp_A = res["A"]
-                    sp_R = res["R"]
-                    simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-                    return simulation_result
-                else:
-                    return res
-            finally:
-                # Reset GillesPy2 logger to its original level after the simulation
-                gillespy2_logger.setLevel(original_level)
+    #         gillespy2_logger = logging.getLogger("GillesPy2")
+    #         original_level = gillespy2_logger.getEffectiveLevel()
+    #         gillespy2_logger.setLevel(logging.ERROR)
+
+    #         try:
+
+    #             solver = SSACSolver(self.model)
+    #             params = params.ravel()
+
+    #             # GillesPy2 simulation execution
+    #             res = self.model.run(
+    #                 solver=solver,
+    #                 timeout=0.33,  # Adjust timeout as necessary
+    #                 variables={
+    #                     self.parameter_names[i]: params[i]
+    #                     for i in range(len(self.parameter_names))
+    #                 },
+    #             )
+
+    #             # Process simulation result
+    #             if res.rc == 33:
+    #                 # Handling the case where simulation exceeded timeout
+    #                 return np.ones((1, 3, 200))  # Return a default or error value
+
+    #             if transform:
+
+    #                 sp_C = res["C"]
+    #                 sp_A = res["A"]
+    #                 sp_R = res["R"]
+    #                 simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+    #                 return simulation_result
+    #             else:
+    #                 return res
+    #         finally:
+    #             # Reset GillesPy2 logger to its original level after the simulation
+    #             gillespy2_logger.setLevel(original_level)
 
     def prior(self, num_samples):
         ranges = self.dmax - self.dmin
