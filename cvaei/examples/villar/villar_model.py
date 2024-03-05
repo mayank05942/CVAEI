@@ -164,12 +164,12 @@ class Villar:
         Generate data samples based on the prior and simulator.
         """
         # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
-        try:
-            set_start_method("spawn")
-        except RuntimeError as e:
-            print(
-                e
-            )  # The start method can only be set once per program, so we catch the exception if it's already set.
+        # try:
+        #     set_start_method("spawn")
+        # except RuntimeError as e:
+        #     print(
+        #         e
+        #     )  # The start method can only be set once per program, so we catch the exception if it's already set.
 
         theta = self.prior(num_samples=num_samples)
 
