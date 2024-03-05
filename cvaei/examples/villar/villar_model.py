@@ -169,7 +169,8 @@ class Villar:
         """
         theta = self.prior(num_samples=num_samples)
         # Determine the number of processes: max CPUs available - 4
-        max_processes = max(1, mp.cpu_count() - 4)  # Ensure at least one process
+        # Calculate 75% of the available CPUs, rounded down
+        max_processes = max(1, int(mp.cpu_count() * 0.75))
         print("Number of CPU cores being used:", max_processes)
 
         # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
@@ -234,7 +235,7 @@ class Villar:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = self.generate_data(num_samples=1000)
+            val_theta, val_data = self.generate_data(num_samples=4)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
@@ -332,8 +333,8 @@ class Villar:
             plt.xlabel("Time Step")
             plt.ylabel(f"Feature {f+1} Value")
             plt.grid(True)
-            if f == 0:
-                plt.legend()
+            # if f == 0:
+            #     plt.legend()
         plt.tight_layout()
         plt.show()
 
