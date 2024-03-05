@@ -82,13 +82,13 @@ class Villar:
     def simulator(self, params, transform=True):
 
         # Suppress GillesPy2 timeout warnings specifically for this block
-        warnings.filterwarnings(
-            "ignore", message="GillesPy2 simulation exceeded timeout."
-        )
+        # warnings.filterwarnings(
+        #     "ignore", message="GillesPy2 simulation exceeded timeout."
+        # )
 
-        gillespy2_logger = logging.getLogger("GillesPy2")
-        original_level = gillespy2_logger.getEffectiveLevel()
-        gillespy2_logger.setLevel(logging.ERROR)
+        # gillespy2_logger = logging.getLogger("GillesPy2")
+        # original_level = gillespy2_logger.getEffectiveLevel()
+        # gillespy2_logger.setLevel(logging.ERROR)
 
         solver = SSACSolver(self.model)
         params = params.ravel()
