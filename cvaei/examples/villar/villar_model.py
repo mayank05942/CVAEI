@@ -183,7 +183,7 @@ class Villar:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = self.generate_data(num_samples=4)
+            val_theta, val_data = self.generate_data(num_samples=10000)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
