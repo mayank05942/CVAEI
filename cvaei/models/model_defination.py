@@ -191,7 +191,7 @@ class CNN_Decoder(nn.Module):
 
         # Process the combined input through Conv1D layers
         x = combined_input
-        print(x.shape)
+        # print(x.shape)
         for layer in self.conv_layers:
             x = F.relu(layer(x))
 

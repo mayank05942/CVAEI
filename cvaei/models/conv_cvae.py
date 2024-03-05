@@ -347,6 +347,54 @@ class CNN_CVAE(nn.Module):
 
         return beta
 
+    # def get_posterior(
+    #     self, observed_data, num_samples=10000, latent_dim=None, device=None
+    # ):
+    #     """
+    #     Get samples from the posterior distribution given observed data.
+
+    #     Parameters:
+    #     observed_data (torch.Tensor): Observed data to condition the generation on.
+    #     num_samples (int): Number of samples to generate from the posterior.
+    #     latent_dim (int, optional): Dimension of the latent space. Defaults to None, in which case it will be inferred from the model.
+    #     device (str, optional): Device to run the computations on. Defaults to None, in which case the current device is used.
+
+    #     Returns:
+    #     torch.Tensor: Samples from the posterior distribution.
+    #     """
+    #     if device is None:
+    #         device = next(self.parameters()).device
+
+    #     if latent_dim is None:
+    #         latent_dim = self.latent_dim
+
+    #     if observed_data.dim() == 3:
+    #         # Reshape y_pred to match y, case when [N, 1, 1000]
+    #         observed_data = observed_data.squeeze(1)
+
+    #     # Set the network to evaluation mode
+    #     self.eval()
+
+    #     with torch.no_grad():
+    #         observed_data = observed_data.to(device)
+
+    #         mean = torch.zeros(latent_dim).to(device)
+    #         covariance = torch.eye(latent_dim).to(device)
+    #         m = torch.distributions.MultivariateNormal(
+    #             mean, covariance_matrix=covariance
+    #         )
+
+    #         z = m.sample((num_samples,)).to(device)
+
+    #         y = observed_data.repeat(num_samples, 1)
+
+    #         # zy = torch.cat((z, y), dim=1)
+    #         posterior_samples, _ = self.decoder(z, y)
+
+    #         # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
+
+    #     return posterior_samples
+
     def get_posterior(
         self, observed_data, num_samples=10000, latent_dim=None, device=None
     ):
@@ -368,15 +416,19 @@ class CNN_CVAE(nn.Module):
         if latent_dim is None:
             latent_dim = self.latent_dim
 
-        if observed_data.dim() == 3:
-            # Reshape y_pred to match y, case when [N, 1, 1000]
-            observed_data = observed_data.squeeze(1)
-
-        # Set the network to evaluation mode
+        # Ensure the network is in evaluation mode
         self.eval()
 
         with torch.no_grad():
             observed_data = observed_data.to(device)
+
+            # Ensure observed_data has the shape expected by the model
+            # If observed_data shape is (1, 3, 200) and you need to generate samples based on it:
+            if observed_data.dim() == 3 and observed_data.shape[0] == 1:
+                # Repeat the observed data to match num_samples
+                observed_data = observed_data.repeat(
+                    num_samples, 1, 1
+                )  # Shape becomes (num_samples, 3, 200)
 
             mean = torch.zeros(latent_dim).to(device)
             covariance = torch.eye(latent_dim).to(device)
@@ -386,12 +438,10 @@ class CNN_CVAE(nn.Module):
 
             z = m.sample((num_samples,)).to(device)
 
-            y = observed_data.repeat(num_samples, 1)
-
-            # zy = torch.cat((z, y), dim=1)
-            posterior_samples, _ = self.decoder(z, y)
-
-            # posterior_samples = theta_scaler.inverse_transform(posterior_samples)
+            # Decode z and the repeated observed_data to generate posterior samples
+            posterior_samples, _ = self.decode(
+                z, observed_data
+            )  # Adjust according to your decode method's signature
 
         return posterior_samples
 
