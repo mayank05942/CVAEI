@@ -323,47 +323,46 @@ class Villar:
                 "There is a discrepancy in the normalization and denormalization process."
             )
 
-    def posterior_hist(self, posterior, true_params=None, kde=False):
+    def posterior_hist(self, posterior, kde=False):
         """
         Plots histograms or KDE of the posterior parameters based on the kde flag.
 
-        :param posterior: A tensor with shape [n_samples, 2] for posterior samples.
-        :param true_params: True parameters to plot as vertical lines for comparison.
-        :param kde: If True, plots KDE instead of histogram.
+        Parameters:
+        - posterior (torch.Tensor): A tensor for posterior samples.
+        - kde (bool): If True, plots KDE instead of histogram.
         """
-        if true_params is None:
-            true_params = self.true_params
-
-        # Convert tensor to NumPy array for plotting
-
         data = posterior.cpu().numpy()
 
-        # Create plots for each parameter
-        fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-
-        titles = ["Theta 1", "Theta 2"]
-        for i in range(2):
+        # Plot setup
+        plt.figure(figsize=(15, 10))
+        for i in range(posterior.shape[1]):
+            plt.subplot(3, 5, i + 1)
             if kde:
-                # KDE plot
                 sns.kdeplot(
-                    data[:, i], ax=axs[i], fill=True, color="skyblue", edgecolor="black"
-                )
-                axs[i].set_ylabel("Density")
-            else:
-                # Histogram
-                axs[i].hist(
                     data[:, i],
-                    bins=30,
+                    fill=True,
                     color="skyblue",
                     edgecolor="black",
-                    range=(0, 1),
+                    label="Posterior",
                 )
-                axs[i].set_ylabel("Frequency")
+                plt.ylabel("Density")
+            else:
+                plt.hist(
+                    data[:, i],
+                    bins=30,
+                    alpha=0.5,
+                    label="Posterior",
+                    color="skyblue",
+                    edgecolor="black",
+                )
+                plt.ylabel("Frequency")
 
-            # Common configurations for both plot types
-            axs[i].axvline(x=true_params[i], color="red", linestyle="--", linewidth=1)
-            axs[i].set_title(f"{titles[i]} Distribution")
-            axs[i].set_xlabel(titles[i])
+            plt.axvline(
+                x=self.true_params[i], color="r", linestyle="--", label="True Value"
+            )
+            plt.title(f"{self.parameter_names[i]}")
+            plt.xlim([self.dmin[i], self.dmax[i]])
+            plt.legend()
 
         plt.tight_layout()
         plt.show()
