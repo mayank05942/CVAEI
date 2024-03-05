@@ -70,7 +70,7 @@ class CNN_CVAE(nn.Module):
             sequence_length=sequence_length,
             conv_output_channels=conv_output_channels,
             kernel_sizes=kernel_sizes,
-            output_channels=conditional_dim,  # Assuming output_channels is meant to match conditional_dim
+            output_channels=conditional_dim,
         )
 
     def encode(self, x):

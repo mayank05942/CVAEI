@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
-import multiprocessing as mp
+
+# import multiprocessing as mp
 import gillespy2
 import logging
+from torch.multiprocessing import Pool, set_start_method
 
 
 class Villar:
@@ -160,35 +162,64 @@ class Villar:
     def generate_data(self, num_samples=1000):
         """
         Generate data samples based on the prior and simulator.
-
-        Parameters:
-        - num_samples (int): Number of samples to generate.
-
-        Returns:
-        - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
         """
+        # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
+        try:
+            set_start_method("spawn")
+        except RuntimeError as e:
+            print(
+                e
+            )  # The start method can only be set once per program, so we catch the exception if it's already set.
+
         theta = self.prior(num_samples=num_samples)
-        # Determine the number of processes: max CPUs available - 4
+
         # Calculate 75% of the available CPUs, rounded down
-        max_processes = max(1, int(mp.cpu_count() * 0.75))
+        max_processes = max(1, int(torch.multiprocessing.cpu_count() * 0.75))
         print("Number of CPU cores being used:", max_processes)
 
-        # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
-        mp.set_start_method(
-            "spawn", force=True
-        )  # You might move this to the main guard of your script
-
-        with mp.Pool(processes=max_processes) as pool:
+        # Use Pool from torch.multiprocessing
+        with Pool(processes=max_processes) as pool:
             data = pool.map(self.simulator, theta)
 
-        # with mp.Pool(processes=max_processes) as pool:
-        #     data = pool.map(self.simulator, theta)
         data = np.asarray(data)
         data = np.squeeze(data, axis=1)
 
         data = torch.tensor(data, dtype=torch.float32, device=self.device)
         theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
         return theta, data
+
+    # def generate_data(self, num_samples=1000):
+    #     """
+    #     Generate data samples based on the prior and simulator.
+
+    #     Parameters:
+    #     - num_samples (int): Number of samples to generate.
+
+    #     Returns:
+    #     - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
+    #     """
+    #     theta = self.prior(num_samples=num_samples)
+    #     # Determine the number of processes: max CPUs available - 4
+    #     # Calculate 75% of the available CPUs, rounded down
+    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
+    #     print("Number of CPU cores being used:", max_processes)
+
+    #     # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
+    #     mp.set_start_method(
+    #         "spawn", force=True
+    #     )
+
+    #     with mp.Pool(processes=max_processes) as pool:
+    #         data = pool.map(self.simulator, theta)
+
+    #     # with mp.Pool(processes=max_processes) as pool:
+    #     #     data = pool.map(self.simulator, theta)
+    #     data = np.asarray(data)
+    #     data = np.squeeze(data, axis=1)
+
+    #     data = torch.tensor(data, dtype=torch.float32, device=self.device)
+    #     theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
+    #     return theta, data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
