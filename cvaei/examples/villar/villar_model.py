@@ -111,22 +111,18 @@ class Villar:
     #         return res
 
     def simulator(self, params, transform=True):
-        # Option 1: Suppress warnings using the warnings module
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
-            # Your GillesPy2 simulation code with warnings suppression
 
-            # Option 2: Adjust GillesPy2 logging level to suppress warnings
             gillespy2_logger = logging.getLogger("GillesPy2")
             original_level = gillespy2_logger.getEffectiveLevel()
             gillespy2_logger.setLevel(logging.ERROR)
 
             try:
-                # Ensure GillesPy2 simulation code is within the try block for logging suppression
+
                 solver = SSACSolver(self.model)
-                params = (
-                    params.ravel()
-                )  # Assuming params need to be flattened or processed
+                params = params.ravel()
 
                 # GillesPy2 simulation execution
                 res = self.model.run(
@@ -144,7 +140,7 @@ class Villar:
                     return np.ones((1, 3, 200))  # Return a default or error value
 
                 if transform:
-                    # Assuming some transformation of the results is required
+
                     sp_C = res["C"]
                     sp_A = res["A"]
                     sp_R = res["R"]
@@ -238,7 +234,7 @@ class Villar:
 
         if validation:
             # Generate validation data
-            val_theta, val_data = self.generate_data(num_samples=10000)
+            val_theta, val_data = self.generate_data(num_samples=1000)
 
             if scale:
                 # Normalize validation data using the same normalizers as for the training data
