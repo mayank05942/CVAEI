@@ -120,8 +120,17 @@ class Villar:
         # Determine the number of processes: max CPUs available - 4
         max_processes = max(1, mp.cpu_count() - 4)  # Ensure at least one process
         print("Number of CPU cores being used:", max_processes)
+
+        # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
+        mp.set_start_method(
+            "spawn", force=True
+        )  # You might move this to the main guard of your script
+
         with mp.Pool(processes=max_processes) as pool:
             data = pool.map(self.simulator, theta)
+
+        # with mp.Pool(processes=max_processes) as pool:
+        #     data = pool.map(self.simulator, theta)
         data = np.asarray(data)
         data = np.squeeze(data, axis=1)
 
