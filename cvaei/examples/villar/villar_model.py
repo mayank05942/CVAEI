@@ -27,7 +27,7 @@ class Villar:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
 
-        self.device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = model if model is not None else Vilar_Oscillator()
 
         if true_params is None:
@@ -179,8 +179,9 @@ class Villar:
         # Convert data and theta lists to numpy arrays and then to torch tensors
         data = np.asarray(data)
         theta = np.asarray(theta)
+        print(data.shape)
         data = np.squeeze(data, axis=1)
-
+        print(data.shape)
         data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
         theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
