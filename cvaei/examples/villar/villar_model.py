@@ -8,6 +8,7 @@ from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
 from functools import partial
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 from gillespy2.core.events import *
 
@@ -106,24 +107,17 @@ class Villar:
 
     def generate_data(self, num_samples=1000, resample_failed=True):
         """
-        Optimized data generation process with efficient error handling using torch.multiprocessing.
+        Optimized data generation process with efficient error handling using joblib for parallel processing.
         """
         print("Generating data...")
-        cpu_count = torch.multiprocessing.cpu_count()
-        print(cpu_count)
+
+        # No need to explicitly calculate num_processes for joblib, it intelligently uses available CPUs
         theta = self.prior(num_samples)
 
-        # Dynamically adjust the number of processes based on available CPUs, avoiding hard-coded values
-        num_processes = max(
-            1, int(cpu_count * 0.75)
-        )  # Example: Use 75% of available CPUs
-
-        # Adjusting chunk size accordingly
-        chunksize = max(1, int(num_samples / (num_processes * 10)))
-
-        # Initialize Pool with torch.multiprocessing
-        with Pool(processes=num_processes) as pool:
-            series = pool.map(self.simulator, theta, chunksize=chunksize)
+        # Replace the multiprocessing part with joblib's Parallel and delayed
+        series = Parallel(n_jobs=-1)(
+            delayed(self.simulator)(theta_i) for theta_i in theta
+        )
         series = np.array(series)
 
         # Efficient handling of failed simulations (remaining unchanged)
@@ -132,10 +126,11 @@ class Villar:
         )[0]
 
         while failed_indices.size > 0:
-            print("there are failed sim")
+            print("Resampling for failed simulations...")
             new_theta = self.prior(len(failed_indices))
-            with Pool(processes=num_processes) as pool:
-                new_series = pool.map(self.simulator, new_theta, chunksize=chunksize)
+            new_series = Parallel(n_jobs=-1)(
+                delayed(self.simulator)(theta_i) for theta_i in new_theta
+            )
             new_series = np.array(new_series)
 
             for idx, new_idx in enumerate(failed_indices):
@@ -146,8 +141,13 @@ class Villar:
                 np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
             )[0]
 
-        series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
-        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+        # Convert numpy arrays to torch tensors
+        series = torch.from_numpy(series).to(
+            dtype=torch.float32, device=torch.device("cpu")
+        )
+        theta = torch.from_numpy(theta).to(
+            dtype=torch.float32, device=torch.device("cpu")
+        )
 
         return theta, series
 
