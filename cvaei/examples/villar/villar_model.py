@@ -115,7 +115,7 @@ class Villar:
         theta = self.prior(num_samples)
 
         # Replace the multiprocessing part with joblib's Parallel and delayed
-        series = Parallel(n_jobs=-1)(
+        series = Parallel(n_jobs=90)(
             delayed(self.simulator)(theta_i) for theta_i in theta
         )
         series = np.array(series)
@@ -142,12 +142,8 @@ class Villar:
         #     )[0]
 
         # Convert numpy arrays to torch tensors
-        series = torch.from_numpy(series).to(
-            dtype=torch.float32, device=torch.device("cpu")
-        )
-        theta = torch.from_numpy(theta).to(
-            dtype=torch.float32, device=torch.device("cpu")
-        )
+        series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
+        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
         return theta, series
 
