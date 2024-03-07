@@ -132,62 +132,54 @@ class Villar:
         return samples
 
     def worker(self, params):
-        """Worker method for multiprocessing. It runs the simulator with given params."""
+        """Simulates data for given parameters."""
         simulation_result = self.simulator(params)
+        # Check for failure (all ones)
+        if np.all(simulation_result == 1):
+            return None
         return simulation_result, params
 
-    def generate_data(self, num_samples=1000):
-        """Generates data samples based on the prior and simulator using multiprocessing, ensuring all are valid."""
+    def generate_data(self, num_samples=1000, resample_failed=True):
         print("Generating data...")
 
-        # Setup multiprocessing
-        max_processes = max(1, int(mp.cpu_count() * 0.75))
-        print(f"Number of CPU cores being used: {max_processes}")
+        # Initialize multiprocessing pool
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            successful_data, successful_params = [], []
 
-        # Initialize lists for data and theta
-        valid_data, valid_theta = [], []
+            while len(successful_data) < num_samples:
+                remaining_samples = num_samples - len(successful_data)
+                # Generate new parameter samples
+                all_params = self.prior(remaining_samples)
 
-        # Initialize a tqdm progress bar
-        with tqdm(total=num_samples, desc="Generating Samples") as pbar:
+                # Use multiprocessing to simulate data
+                results = pool.map(self.worker, all_params)
 
-            while len(valid_data) < num_samples:
-                # Adjust the number of samples to generate based on how many are still needed
-                samples_needed = num_samples - len(valid_data)
-
-                # Generate parameter samples
-                all_params = self.prior(samples_needed)
-
-                # Use multiprocessing to process the newly generated parameters
-                with mp.Pool(processes=max_processes) as pool:
-                    results = pool.map(partial(self.worker), all_params)
-
-                # Process the results
+                # Process results
                 for result in results:
-                    sim_data, sim_params = result
-                    # Check if the simulation result is not the failure signature (not all ones)
-                    if not np.all(sim_data == 1):
-                        valid_data.append(sim_data)
-                        valid_theta.append(sim_params)
-                        pbar.update(1)
+                    if result is not None:
+                        data, params = result
+                        successful_data.append(data)
+                        successful_params.append(params)
 
-        # Convert data and theta lists to numpy arrays
-        valid_data = np.asarray(valid_data)
-        valid_theta = np.asarray(valid_theta)
+                # Optionally, progress output
+                print(
+                    f"Collected {len(successful_data)} valid simulations out of {num_samples}."
+                )
 
-        # Ensure correct shape before conversion to tensors
-        print(valid_data.shape)
-        valid_data = np.squeeze(valid_data, axis=1)
-        print(valid_data.shape)
+        # Convert lists to numpy arrays
+        successful_data = np.asarray(successful_data)
+        successful_data = np.squeeze(successful_data, axis=1)
+        successful_params = np.asarray(successful_params)
 
-        # Convert to torch tensors and move to the specified device
-        valid_data = torch.from_numpy(valid_data).to(
+        # Convert to torch tensors
+        successful_data = torch.from_numpy(successful_data).to(
             dtype=torch.float32, device=self.device
         )
-        valid_theta = torch.from_numpy(valid_theta).to(
+        successful_params = torch.from_numpy(successful_params).to(
             dtype=torch.float32, device=self.device
         )
 
-        return valid_theta, valid_data
+        return successful_params, successful_data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
