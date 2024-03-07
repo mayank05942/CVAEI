@@ -101,7 +101,7 @@ class Villar:
                 # GillesPy2 simulation execution
                 res = self.model.run(
                     solver=local_solver,
-                    timeout=0.33,  # Adjust timeout as necessary
+                    timeout=100.33,  # Adjust timeout as necessary
                     variables={
                         self.parameter_names[i]: params[i]
                         for i in range(len(self.parameter_names))
