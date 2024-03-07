@@ -6,16 +6,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
-from gillespy2 import (
-    Model,
-    Species,
-    Reaction,
-    Parameter,
-    RateRule,
-    AssignmentRule,
-    FunctionDefinition,
-)
-from gillespy2 import EventAssignment, EventTrigger, Event
+from functools import partial
+from tqdm import tqdm
+
 from gillespy2.core.events import *
 
 import multiprocessing as mp
@@ -93,83 +86,105 @@ class Villar:
 
     def simulator(self, params, transform=True):
 
-        # Suppress GillesPy2 timeout warnings specifically for this block
-        # warnings.filterwarnings(
-        #     "ignore", message="GillesPy2 simulation exceeded timeout."
-        # )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
 
-        # gillespy2_logger = logging.getLogger("GillesPy2")
-        # original_level = gillespy2_logger.getEffectiveLevel()
-        # gillespy2_logger.setLevel(logging.ERROR)
+            gillespy2_logger = logging.getLogger("GillesPy2")
+            original_level = gillespy2_logger.getEffectiveLevel()
+            gillespy2_logger.setLevel(logging.ERROR)
 
-        local_solver = SSACSolver(model=self.model)
-        params = params.ravel()
-        res = self.model.run(
-            solver=local_solver,
-            timeout=1000.33,
-            variables={
-                self.parameter_names[i]: params[i]
-                for i in range(len(self.parameter_names))
-            },
-        )
+            try:
 
-        if res.rc == 33:
-            return None
-        if transform:
-            sp_C = res["C"]
-            sp_A = res["A"]
-            sp_R = res["R"]
-            return np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+                local_solver = SSACSolver(model=self.model)
+                params = params.ravel()
 
-        else:
-            return res
+                # GillesPy2 simulation execution
+                res = self.model.run(
+                    solver=local_solver,
+                    timeout=0.33,  # Adjust timeout as necessary
+                    variables={
+                        self.parameter_names[i]: params[i]
+                        for i in range(len(self.parameter_names))
+                    },
+                )
 
-    # def simulator(self, params, transform=True):
+                # Process simulation result
+                if res.rc == 33:
+                    # Handling the case where simulation exceeded timeout
+                    return None
 
-    #     with warnings.catch_warnings():
-    #         warnings.simplefilter("ignore", category=UserWarning)
+                if transform:
 
-    #         gillespy2_logger = logging.getLogger("GillesPy2")
-    #         original_level = gillespy2_logger.getEffectiveLevel()
-    #         gillespy2_logger.setLevel(logging.ERROR)
-
-    #         try:
-
-    #             solver = SSACSolver(self.model)
-    #             params = params.ravel()
-
-    #             # GillesPy2 simulation execution
-    #             res = self.model.run(
-    #                 solver=solver,
-    #                 timeout=0.33,  # Adjust timeout as necessary
-    #                 variables={
-    #                     self.parameter_names[i]: params[i]
-    #                     for i in range(len(self.parameter_names))
-    #                 },
-    #             )
-
-    #             # Process simulation result
-    #             if res.rc == 33:
-    #                 # Handling the case where simulation exceeded timeout
-    #                 return np.ones((1, 3, 200))  # Return a default or error value
-
-    #             if transform:
-
-    #                 sp_C = res["C"]
-    #                 sp_A = res["A"]
-    #                 sp_R = res["R"]
-    #                 simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-    #                 return simulation_result
-    #             else:
-    #                 return res
-    #         finally:
-    #             # Reset GillesPy2 logger to its original level after the simulation
-    #             gillespy2_logger.setLevel(original_level)
+                    sp_C = res["C"]
+                    sp_A = res["A"]
+                    sp_R = res["R"]
+                    simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+                    return simulation_result
+                else:
+                    return res
+            finally:
+                # Reset GillesPy2 logger to its original level after the simulation
+                gillespy2_logger.setLevel(original_level)
 
     def prior(self, num_samples):
         ranges = self.dmax - self.dmin
         samples = np.random.rand(num_samples, len(self.dmin)) * ranges + self.dmin
         return samples
+
+    def worker(self, params):
+        """Worker method for multiprocessing. It runs the simulator with given params."""
+        simulation_result = self.simulator(params)
+        return simulation_result, params if simulation_result is not None else None
+
+    def generate_data(self, num_samples=1000):
+        """Generates data samples based on the prior and simulator using multiprocessing, ensuring all are valid."""
+        print("Generating data...")
+
+        # Initialize lists for data and theta
+        data, theta = [], []
+
+        # Setup multiprocessing
+        max_processes = max(1, int(mp.cpu_count() * 0.75))
+        print(f"Number of CPU cores being used: {max_processes}")
+
+        # Initialize a tqdm progress bar
+        pbar = tqdm(total=num_samples, desc="Generating Samples")
+
+        # Keep generating data until the desired number of samples is reached
+        while len(data) < num_samples:
+            # Determine how many more samples are needed
+            samples_needed = num_samples - len(data)
+
+            # Generate parameter samples
+            all_params = self.prior(samples_needed)
+
+            # Use multiprocessing to process the newly generated parameters
+            with mp.Pool(processes=max_processes) as pool:
+                results = pool.map(partial(self.worker), all_params)
+
+            # Filter and add successful simulations
+            for result in results:
+                if result is not None:
+                    sim_data, sim_params = result
+                    data.append(sim_data)
+                    theta.append(sim_params)
+                    # Update the progress bar
+                    pbar.update(1)
+                    if len(data) == num_samples:
+                        break
+
+        # Close the progress bar once the loop is complete
+        pbar.close()
+
+        # Convert data and theta lists to numpy arrays and then to torch tensors
+        data = np.asarray(data)
+        theta = np.asarray(theta)
+        data = np.squeeze(data, axis=1)
+
+        data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
+        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+
+        return theta, data
 
     # def generate_data(self, num_samples=1000):
     #     """
@@ -202,30 +217,30 @@ class Villar:
     #     # theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
     #     return theta, data
 
-    def generate_data(self, num_samples=1000):
-        theta = []
-        data = []
-        print("hello")
-        # Calculate 75% of the available CPUs, rounded down
-        max_processes = max(1, int(mp.cpu_count() * 0.75))
-        print("Number of CPU cores being used:", max_processes)
+    # def generate_data(self, num_samples=1000):
+    #     theta = []
+    #     data = []
+    #     print("hello")
+    #     # Calculate 75% of the available CPUs, rounded down
+    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
+    #     print("Number of CPU cores being used:", max_processes)
 
-        while len(data) < num_samples:
-            params = self.prior(1)[0]  # Generate a single sample
-            simulation_result = self.simulator(params)
-            if simulation_result is not None:
-                data.append(simulation_result)
-                theta.append(params)
+    #     while len(data) < num_samples:
+    #         params = self.prior(1)[0]  # Generate a single sample
+    #         simulation_result = self.simulator(params)
+    #         if simulation_result is not None:
+    #             data.append(simulation_result)
+    #             theta.append(params)
 
-        data = np.asarray(data)
-        theta = np.asarray(theta)
+    #     data = np.asarray(data)
+    #     theta = np.asarray(theta)
 
-        data = np.squeeze(data, axis=1)
+    #     data = np.squeeze(data, axis=1)
 
-        data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
-        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+    #     data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
+    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
-        return theta, data
+    #     return theta, data
 
     # def generate_data(self, num_samples=1000):
     #     """
@@ -524,3 +539,69 @@ class Villar:
             observed_data = getattr(self, "observed_data")
             if isinstance(observed_data, torch.Tensor):
                 print(f"observed_data is on device: {observed_data.device}")
+
+    # def simulator(self, params, transform=True):
+
+    #     with warnings.catch_warnings():
+    #         warnings.simplefilter("ignore", category=UserWarning)
+
+    #         gillespy2_logger = logging.getLogger("GillesPy2")
+    #         original_level = gillespy2_logger.getEffectiveLevel()
+    #         gillespy2_logger.setLevel(logging.ERROR)
+
+    #         try:
+
+    #             solver = SSACSolver(self.model)
+    #             params = params.ravel()
+
+    #             # GillesPy2 simulation execution
+    #             res = self.model.run(
+    #                 solver=solver,
+    #                 timeout=0.33,  # Adjust timeout as necessary
+    #                 variables={
+    #                     self.parameter_names[i]: params[i]
+    #                     for i in range(len(self.parameter_names))
+    #                 },
+    #             )
+
+    #             # Process simulation result
+    #             if res.rc == 33:
+    #                 # Handling the case where simulation exceeded timeout
+    #                 return np.ones((1, 3, 200))  # Return a default or error value
+
+    #             if transform:
+
+    #                 sp_C = res["C"]
+    #                 sp_A = res["A"]
+    #                 sp_R = res["R"]
+    #                 simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+    #                 return simulation_result
+    #             else:
+    #                 return res
+    #         finally:
+    #             # Reset GillesPy2 logger to its original level after the simulation
+    #             gillespy2_logger.setLevel(original_level)
+
+    # def simulator(self, params, transform=True):
+
+    # local_solver = SSACSolver(model=self.model)
+    # params = params.ravel()
+    # res = self.model.run(
+    #     solver=local_solver,
+    #     timeout=0.33,
+    #     variables={
+    #         self.parameter_names[i]: params[i]
+    #         for i in range(len(self.parameter_names))
+    #     },
+    # )
+
+    # if res.rc == 33:
+    #     return None
+    # if transform:
+    #     sp_C = res["C"]
+    #     sp_A = res["A"]
+    #     sp_R = res["R"]
+    #     return np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+
+    # else:
+    #     return res
