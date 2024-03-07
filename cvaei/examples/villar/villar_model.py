@@ -121,25 +121,25 @@ class Villar:
         series = np.array(series)
 
         # Efficient handling of failed simulations (remaining unchanged)
-        failed_indices = np.where(
-            np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
-        )[0]
+        # failed_indices = np.where(
+        #     np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+        # )[0]
 
-        while failed_indices.size > 0:
-            print("Resampling for failed simulations...")
-            new_theta = self.prior(len(failed_indices))
-            new_series = Parallel(n_jobs=-1)(
-                delayed(self.simulator)(theta_i) for theta_i in new_theta
-            )
-            new_series = np.array(new_series)
+        # while failed_indices.size > 0:
+        #     print("Resampling for failed simulations...")
+        #     new_theta = self.prior(len(failed_indices))
+        #     new_series = Parallel(n_jobs=-1)(
+        #         delayed(self.simulator)(theta_i) for theta_i in new_theta
+        #     )
+        #     new_series = np.array(new_series)
 
-            for idx, new_idx in enumerate(failed_indices):
-                theta[new_idx] = new_theta[idx]
-                series[new_idx] = new_series[idx]
+        #     for idx, new_idx in enumerate(failed_indices):
+        #         theta[new_idx] = new_theta[idx]
+        #         series[new_idx] = new_series[idx]
 
-            failed_indices = np.where(
-                np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
-            )[0]
+        #     failed_indices = np.where(
+        #         np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+        #     )[0]
 
         # Convert numpy arrays to torch tensors
         series = torch.from_numpy(series).to(
