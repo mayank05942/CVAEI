@@ -11,11 +11,18 @@ from tqdm import tqdm
 
 from gillespy2.core.events import *
 
-import multiprocessing as mp
+# import multiprocessing as mp
 
 import logging
 
-# from torch.multiprocessing import Pool, set_start_method
+from torch.multiprocessing import Pool, set_start_method
+
+try:
+    # Set the start method to 'spawn' to work correctly with CUDA in subprocesses if necessary
+    set_start_method("spawn")
+except RuntimeError:
+    # The start method can only be set once per program, so ignore the error if it's already been set
+    pass
 
 
 class Villar:
@@ -82,7 +89,6 @@ class Villar:
             [80, 600, 4, 60, 60, 7, 12, 2, 3, 0.7, 2.5, 4, 3, 70, 300], dtype=np.float32
         )
 
-        self.model = Vilar_Oscillator()
         self.solver = SSACSolver(model=self.model)
 
     def simulator(self, params):
@@ -95,58 +101,32 @@ class Villar:
         else:
             return np.array([result[species] for species in ["C", "A", "R"]])
 
-    # def simulator(self, params, transform=True):
-
-    #     local_solver = SSACSolver(model=self.model)
-    #     params = params.ravel()
-
-    #     # GillesPy2 simulation execution
-    #     res = self.model.run(
-    #         solver=local_solver,
-    #         timeout=0.33,  # Adjust timeout as necessary
-    #         variables={
-    #             self.parameter_names[i]: params[i]
-    #             for i in range(len(self.parameter_names))
-    #         },
-    #     )
-
-    #     # Process simulation result
-    #     if res.rc == 33:
-    #         # Handling the case where simulation exceeded timeout
-    #         return np.full((1, 3, 200), np.inf)
-
-    #     if transform:
-
-    #         sp_C = res["C"]
-    #         sp_A = res["A"]
-    #         sp_R = res["R"]
-    #         simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-    #         return simulation_result
-    #     else:
-    #         return res
-
     def prior(self, num_samples):
         return np.random.uniform(low=self.dmin, high=self.dmax, size=(num_samples, 15))
 
     def generate_data(self, num_samples=1000, resample_failed=True):
         """
-        Optimized data generation process with efficient error handling.
+        Optimized data generation process with efficient error handling using torch.multiprocessing.
         """
         print("Generating data...")
-        print(mp.cpu_count())
+        cpu_count = torch.multiprocessing.cpu_count()
+        print(cpu_count)
         theta = self.prior(num_samples)
-        if mp.cpu_count() == 8:
-            num_processes = 6
-        else:
-            num_processes = 96
 
-        chunksize = int(num_samples / (num_processes * 10))
+        # Dynamically adjust the number of processes based on available CPUs, avoiding hard-coded values
+        num_processes = max(
+            1, int(cpu_count * 0.75)
+        )  # Example: Use 75% of available CPUs
 
-        with mp.Pool(processes=num_processes) as pool:
-            series = pool.map(self.simulator, theta)
+        # Adjusting chunk size accordingly
+        chunksize = max(1, int(num_samples / (num_processes * 10)))
+
+        # Initialize Pool with torch.multiprocessing
+        with Pool(processes=num_processes) as pool:
+            series = pool.map(self.simulator, theta, chunksize=chunksize)
         series = np.array(series)
 
-        # Efficient handling of failed simulations
+        # Efficient handling of failed simulations (remaining unchanged)
         failed_indices = np.where(
             np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
         )[0]
@@ -154,8 +134,8 @@ class Villar:
         while failed_indices.size > 0:
             print("there are failed sim")
             new_theta = self.prior(len(failed_indices))
-            with mp.Pool(processes=mp.cpu_count() - 2) as pool:
-                new_series = pool.map(self.simulator, new_theta)
+            with Pool(processes=num_processes) as pool:
+                new_series = pool.map(self.simulator, new_theta, chunksize=chunksize)
             new_series = np.array(new_series)
 
             for idx, new_idx in enumerate(failed_indices):
@@ -166,11 +146,54 @@ class Villar:
                 np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
             )[0]
 
-        # series = np.squeeze(series, axis=1)
         series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
         theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
         return theta, series
+
+    # def generate_data(self, num_samples=1000, resample_failed=True):
+    #     """
+    #     Optimized data generation process with efficient error handling.
+    #     """
+    #     print("Generating data...")
+    #     print(mp.cpu_count())
+    #     theta = self.prior(num_samples)
+    #     if mp.cpu_count() == 8:
+    #         num_processes = 6
+    #     else:
+    #         num_processes = 96
+
+    #     chunksize = int(num_samples / (num_processes * 10))
+
+    #     with mp.Pool(processes=num_processes) as pool:
+    #         series = pool.map(self.simulator, theta)
+    #     series = np.array(series)
+
+    #     # Efficient handling of failed simulations
+    #     failed_indices = np.where(
+    #         np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+    #     )[0]
+
+    #     while failed_indices.size > 0:
+    #         print("there are failed sim")
+    #         new_theta = self.prior(len(failed_indices))
+    #         with mp.Pool(processes=num_processes) as pool:
+    #             new_series = pool.map(self.simulator, new_theta)
+    #         new_series = np.array(new_series)
+
+    #         for idx, new_idx in enumerate(failed_indices):
+    #             theta[new_idx] = new_theta[idx]
+    #             series[new_idx] = new_series[idx]
+
+    #         failed_indices = np.where(
+    #             np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+    #         )[0]
+
+    #     # series = np.squeeze(series, axis=1)
+    #     series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
+    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+
+    #     return theta, series
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
