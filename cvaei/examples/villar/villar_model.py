@@ -27,7 +27,7 @@ class Villar:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
         self.model = model if model is not None else Vilar_Oscillator()
 
         if true_params is None:
@@ -141,7 +141,7 @@ class Villar:
 
     def generate_data(self, num_samples=1000, resample_failed=True):
         print("Generating data...")
-
+        print(mp.cpu_count())
         theta = self.prior(num_samples)
 
         with mp.Pool(processes=mp.cpu_count() - 2) as pool:
