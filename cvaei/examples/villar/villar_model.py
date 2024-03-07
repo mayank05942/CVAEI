@@ -126,9 +126,15 @@ class Villar:
         print("Generating data...")
         print(mp.cpu_count())
         theta = self.prior(num_samples)
+        if mp.cpu_count() == 8:
+            num_processes = 6
+        else:
+            num_processes = min(32, mp.cpu_count())
 
-        with mp.Pool(processes=mp.cpu_count() - 2) as pool:
-            series = pool.map(self.simulator, theta)
+        chunksize = int(num_samples / (num_processes * 10))
+
+        with mp.Pool(processes=num_processes) as pool:
+            series = pool.map(self.simulator, theta, chunksize=chunksize)
         series = np.array(series)
 
         # Efficient handling of failed simulations
