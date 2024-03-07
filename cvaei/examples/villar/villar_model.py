@@ -83,41 +83,50 @@ class Villar:
         )
 
         self.model = Vilar_Oscillator()
+        self.solver = SSACSolver(model=self.model)
 
-    def simulator(self, params, transform=True):
+    def simulator(self, params):
 
-        local_solver = SSACSolver(model=self.model)
-        params = params.ravel()
+        params_dict = {self.parameter_names[i]: param for i, param in enumerate(params)}
+        result = self.model.run(solver=self.solver, timeout=0.7, variables=params_dict)
 
-        # GillesPy2 simulation execution
-        res = self.model.run(
-            solver=local_solver,
-            timeout=1.33,  # Adjust timeout as necessary
-            variables={
-                self.parameter_names[i]: params[i]
-                for i in range(len(self.parameter_names))
-            },
-        )
-
-        # Process simulation result
-        if res.rc == 33:
-            # Handling the case where simulation exceeded timeout
-            return np.full((1, 3, 200), np.inf)
-
-        if transform:
-
-            sp_C = res["C"]
-            sp_A = res["A"]
-            sp_R = res["R"]
-            simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-            return simulation_result
+        if result.rc == 33:  # Timeout or error
+            return np.full((3, 200), np.inf)
         else:
-            return res
+            return np.array([result[species] for species in ["C", "A", "R"]])
+
+    # def simulator(self, params, transform=True):
+
+    #     local_solver = SSACSolver(model=self.model)
+    #     params = params.ravel()
+
+    #     # GillesPy2 simulation execution
+    #     res = self.model.run(
+    #         solver=local_solver,
+    #         timeout=0.33,  # Adjust timeout as necessary
+    #         variables={
+    #             self.parameter_names[i]: params[i]
+    #             for i in range(len(self.parameter_names))
+    #         },
+    #     )
+
+    #     # Process simulation result
+    #     if res.rc == 33:
+    #         # Handling the case where simulation exceeded timeout
+    #         return np.full((1, 3, 200), np.inf)
+
+    #     if transform:
+
+    #         sp_C = res["C"]
+    #         sp_A = res["A"]
+    #         sp_R = res["R"]
+    #         simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+    #         return simulation_result
+    #     else:
+    #         return res
 
     def prior(self, num_samples):
-        ranges = self.dmax - self.dmin
-        samples = np.random.rand(num_samples, len(self.dmin)) * ranges + self.dmin
-        return samples
+        return np.random.uniform(low=self.dmin, high=self.dmax, size=(num_samples, 15))
 
     def generate_data(self, num_samples=1000, resample_failed=True):
         """
@@ -129,12 +138,12 @@ class Villar:
         if mp.cpu_count() == 8:
             num_processes = 6
         else:
-            num_processes = min(32, mp.cpu_count())
+            num_processes = 96
 
         chunksize = int(num_samples / (num_processes * 10))
 
         with mp.Pool(processes=num_processes) as pool:
-            series = pool.map(self.simulator, theta, chunksize=chunksize)
+            series = pool.map(self.simulator, theta)
         series = np.array(series)
 
         # Efficient handling of failed simulations
@@ -143,6 +152,7 @@ class Villar:
         )[0]
 
         while failed_indices.size > 0:
+            print("there are failed sim")
             new_theta = self.prior(len(failed_indices))
             with mp.Pool(processes=mp.cpu_count() - 2) as pool:
                 new_series = pool.map(self.simulator, new_theta)
@@ -156,7 +166,7 @@ class Villar:
                 np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
             )[0]
 
-        series = np.squeeze(series, axis=1)
+        # series = np.squeeze(series, axis=1)
         series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
         theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
