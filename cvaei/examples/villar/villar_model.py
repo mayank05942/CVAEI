@@ -117,7 +117,7 @@ class Villar:
         simulator_with_fixed_args = partial(self.simulator, model=model, solver=solver)
 
         # Use joblib's Parallel and delayed with the partial function
-        series = Parallel(n_jobs=-1)(
+        series = Parallel(n_jobs=90)(
             delayed(simulator_with_fixed_args)(theta_i) for theta_i in theta
         )
         series = np.array(series)
