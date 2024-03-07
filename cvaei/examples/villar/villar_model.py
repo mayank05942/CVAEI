@@ -86,60 +86,43 @@ class Villar:
 
     def simulator(self, params, transform=True):
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
+        local_solver = SSACSolver(model=self.model)
+        params = params.ravel()
 
-            gillespy2_logger = logging.getLogger("GillesPy2")
-            original_level = gillespy2_logger.getEffectiveLevel()
-            gillespy2_logger.setLevel(logging.ERROR)
+        # GillesPy2 simulation execution
+        res = self.model.run(
+            solver=local_solver,
+            timeout=1.33,  # Adjust timeout as necessary
+            variables={
+                self.parameter_names[i]: params[i]
+                for i in range(len(self.parameter_names))
+            },
+        )
 
-            try:
+        # Process simulation result
+        if res.rc == 33:
+            # Handling the case where simulation exceeded timeout
+            return np.full((1, 3, 200), np.inf)
 
-                local_solver = SSACSolver(model=self.model)
-                params = params.ravel()
+        if transform:
 
-                # GillesPy2 simulation execution
-                res = self.model.run(
-                    solver=local_solver,
-                    timeout=100.33,  # Adjust timeout as necessary
-                    variables={
-                        self.parameter_names[i]: params[i]
-                        for i in range(len(self.parameter_names))
-                    },
-                )
-
-                # Process simulation result
-                if res.rc == 33:
-                    # Handling the case where simulation exceeded timeout
-                    return np.full((1, 3, 200), np.inf)
-
-                if transform:
-
-                    sp_C = res["C"]
-                    sp_A = res["A"]
-                    sp_R = res["R"]
-                    simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
-                    return simulation_result
-                else:
-                    return res
-            finally:
-                # Reset GillesPy2 logger to its original level after the simulation
-                gillespy2_logger.setLevel(original_level)
+            sp_C = res["C"]
+            sp_A = res["A"]
+            sp_R = res["R"]
+            simulation_result = np.vstack([sp_C, sp_A, sp_R])[np.newaxis, :, :]
+            return simulation_result
+        else:
+            return res
 
     def prior(self, num_samples):
         ranges = self.dmax - self.dmin
         samples = np.random.rand(num_samples, len(self.dmin)) * ranges + self.dmin
         return samples
 
-    def worker(self, params):
-        """Simulates data for given parameters."""
-        simulation_result = self.simulator(params)
-        # Check for failure (all ones)
-        if np.all(simulation_result == 1):
-            return None
-        return simulation_result, params
-
     def generate_data(self, num_samples=1000, resample_failed=True):
+        """
+        Optimized data generation process with efficient error handling.
+        """
         print("Generating data...")
         print(mp.cpu_count())
         theta = self.prior(num_samples)
@@ -148,72 +131,30 @@ class Villar:
             series = pool.map(self.simulator, theta)
         series = np.array(series)
 
-        # Check for divergence
-        while True:
-            inf_inds = [
-                i
-                for i, ts in enumerate(series)
-                if np.isinf(ts).any() or np.isnan(ts).any()
-            ]
-            if len(inf_inds) == 0:
-                series = np.squeeze(series, axis=1)
-                series = torch.from_numpy(series).to(
-                    dtype=torch.float32, device=self.device
-                )
-                theta = torch.from_numpy(theta).to(
-                    dtype=torch.float32, device=self.device
-                )
+        # Efficient handling of failed simulations
+        failed_indices = np.where(
+            np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+        )[0]
 
-                return theta, series
-            else:
-                new_params = self.prior(num_samples)
+        while failed_indices.size > 0:
+            new_theta = self.prior(len(failed_indices))
+            with mp.Pool(processes=mp.cpu_count() - 2) as pool:
+                new_series = pool.map(self.simulator, new_theta)
+            new_series = np.array(new_series)
 
-                with mp.Pool(processes=mp.cpu_count() - 2) as pool:
-                    new_tst = pool.map(self.simulator, new_params)
-                    new_tst = np.asarray(new_tst)
+            for idx, new_idx in enumerate(failed_indices):
+                theta[new_idx] = new_theta[idx]
+                series[new_idx] = new_series[idx]
 
-                for i, ind in enumerate(inf_inds):
-                    theta[ind] = new_params[i]
-                    series[ind] = new_tst[i]
+            failed_indices = np.where(
+                np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+            )[0]
 
-        # Initialize multiprocessing pool
-        with mp.Pool(processes=mp.cpu_count()) as pool:
-            successful_data, successful_params = [], []
+        series = np.squeeze(series, axis=1)
+        series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
+        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
-            while len(successful_data) < num_samples:
-                remaining_samples = num_samples - len(successful_data)
-                # Generate new parameter samples
-                all_params = self.prior(remaining_samples)
-
-                # Use multiprocessing to simulate data
-                results = pool.map(self.worker, all_params)
-
-                # Process results
-                for result in results:
-                    if result is not None:
-                        data, params = result
-                        successful_data.append(data)
-                        successful_params.append(params)
-
-                # Optionally, progress output
-                print(
-                    f"Collected {len(successful_data)} valid simulations out of {num_samples}."
-                )
-
-        # Convert lists to numpy arrays
-        successful_data = np.asarray(successful_data)
-        successful_data = np.squeeze(successful_data, axis=1)
-        successful_params = np.asarray(successful_params)
-
-        # Convert to torch tensors
-        successful_data = torch.from_numpy(successful_data).to(
-            dtype=torch.float32, device=self.device
-        )
-        successful_params = torch.from_numpy(successful_params).to(
-            dtype=torch.float32, device=self.device
-        )
-
-        return successful_params, successful_data
+        return theta, series
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
@@ -545,3 +486,41 @@ class Villar:
 
     # else:
     #     return res
+
+
+# def generate_data(self, num_samples=1000, resample_failed=True):
+#         print("Generating data...")
+#         print(mp.cpu_count())
+#         theta = self.prior(num_samples)
+
+#         with mp.Pool(processes=mp.cpu_count() - 2) as pool:
+#             series = pool.map(self.simulator, theta)
+#         series = np.array(series)
+
+#         # Check for divergence
+#         while True:
+#             inf_inds = [
+#                 i
+#                 for i, ts in enumerate(series)
+#                 if np.isinf(ts).any() or np.isnan(ts).any()
+#             ]
+#             if len(inf_inds) == 0:
+#                 series = np.squeeze(series, axis=1)
+#                 series = torch.from_numpy(series).to(
+#                     dtype=torch.float32, device=self.device
+#                 )
+#                 theta = torch.from_numpy(theta).to(
+#                     dtype=torch.float32, device=self.device
+#                 )
+
+#                 return theta, series
+#             else:
+#                 new_params = self.prior(num_samples)
+
+#                 with mp.Pool(processes=mp.cpu_count() - 2) as pool:
+#                     new_tst = pool.map(self.simulator, new_params)
+#                     new_tst = np.asarray(new_tst)
+
+#                 for i, ind in enumerate(inf_inds):
+#                     theta[ind] = new_params[i]
+#                     series[ind] = new_tst[i]
