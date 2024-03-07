@@ -9,12 +9,13 @@ from gillespy2 import SSACSolver
 from functools import partial
 from tqdm import tqdm
 from joblib import Parallel, delayed
+from functools import partial
+from joblib import Parallel, delayed
 
 from gillespy2.core.events import *
 
 # import multiprocessing as mp
 
-import logging
 
 from torch.multiprocessing import Pool, set_start_method
 
@@ -92,10 +93,9 @@ class Villar:
 
         self.solver = SSACSolver(model=self.model)
 
-    def simulator(self, params):
-
+    def simulator(self, params, model, solver):
         params_dict = {self.parameter_names[i]: param for i, param in enumerate(params)}
-        result = self.model.run(solver=self.solver, timeout=0.7, variables=params_dict)
+        result = model.run(solver=solver, timeout=0.7, variables=params_dict)
 
         if result.rc == 33:  # Timeout or error
             return np.full((3, 200), np.inf)
@@ -106,46 +106,72 @@ class Villar:
         return np.random.uniform(low=self.dmin, high=self.dmax, size=(num_samples, 15))
 
     def generate_data(self, num_samples=1000, resample_failed=True):
-        """
-        Optimized data generation process with efficient error handling using joblib for parallel processing.
-        """
         print("Generating data...")
 
-        # No need to explicitly calculate num_processes for joblib, it intelligently uses available CPUs
         theta = self.prior(num_samples)
 
-        # Replace the multiprocessing part with joblib's Parallel and delayed
-        series = Parallel(n_jobs=90)(
-            delayed(self.simulator)(theta_i) for theta_i in theta
+        model = Vilar_Oscillator()
+        solver = SSACSolver(model=model)
+
+        # Use partial to fix the model and solver arguments for the simulator function
+        simulator_with_fixed_args = partial(self.simulator, model=model, solver=solver)
+
+        # Use joblib's Parallel and delayed with the partial function
+        series = Parallel(n_jobs=-1)(
+            delayed(simulator_with_fixed_args)(theta_i) for theta_i in theta
         )
         series = np.array(series)
-
-        # Efficient handling of failed simulations (remaining unchanged)
-        # failed_indices = np.where(
-        #     np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
-        # )[0]
-
-        # while failed_indices.size > 0:
-        #     print("Resampling for failed simulations...")
-        #     new_theta = self.prior(len(failed_indices))
-        #     new_series = Parallel(n_jobs=-1)(
-        #         delayed(self.simulator)(theta_i) for theta_i in new_theta
-        #     )
-        #     new_series = np.array(new_series)
-
-        #     for idx, new_idx in enumerate(failed_indices):
-        #         theta[new_idx] = new_theta[idx]
-        #         series[new_idx] = new_series[idx]
-
-        #     failed_indices = np.where(
-        #         np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
-        #     )[0]
 
         # Convert numpy arrays to torch tensors
         series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
         theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
 
         return theta, series
+
+    # def generate_data(self, num_samples=1000, resample_failed=True):
+    #     """
+    #     Optimized data generation process with efficient error handling using joblib for parallel processing.
+    #     """
+    #     print("Generating data...")
+
+    #     # No need to explicitly calculate num_processes for joblib, it intelligently uses available CPUs
+    #     theta = self.prior(num_samples)
+
+    #     model = Vilar_Oscillator()
+    #     solver = SSACSolver(model=model)
+
+    #     # Replace the multiprocessing part with joblib's Parallel and delayed
+    #     series = Parallel(n_jobs=90)(
+    #         delayed(self.simulator)(theta_i) for theta_i in theta
+    #     )
+    #     series = np.array(series)
+
+    #     # Efficient handling of failed simulations (remaining unchanged)
+    #     # failed_indices = np.where(
+    #     #     np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+    #     # )[0]
+
+    #     # while failed_indices.size > 0:
+    #     #     print("Resampling for failed simulations...")
+    #     #     new_theta = self.prior(len(failed_indices))
+    #     #     new_series = Parallel(n_jobs=-1)(
+    #     #         delayed(self.simulator)(theta_i) for theta_i in new_theta
+    #     #     )
+    #     #     new_series = np.array(new_series)
+
+    #     #     for idx, new_idx in enumerate(failed_indices):
+    #     #         theta[new_idx] = new_theta[idx]
+    #     #         series[new_idx] = new_series[idx]
+
+    #     #     failed_indices = np.where(
+    #     #         np.isinf(series).any(axis=(1, 2)) | np.isnan(series).any(axis=(1, 2))
+    #     #     )[0]
+
+    #     # Convert numpy arrays to torch tensors
+    #     series = torch.from_numpy(series).to(dtype=torch.float32, device=self.device)
+    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+
+    #     return theta, series
 
     # def generate_data(self, num_samples=1000, resample_failed=True):
     #     """
