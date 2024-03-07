@@ -111,7 +111,7 @@ class Villar:
                 # Process simulation result
                 if res.rc == 33:
                     # Handling the case where simulation exceeded timeout
-                    return None
+                    return np.ones((1, 3, 200))
 
                 if transform:
 
@@ -134,147 +134,60 @@ class Villar:
     def worker(self, params):
         """Worker method for multiprocessing. It runs the simulator with given params."""
         simulation_result = self.simulator(params)
-        return simulation_result, params if simulation_result is not None else None
+        return simulation_result, params
 
     def generate_data(self, num_samples=1000):
         """Generates data samples based on the prior and simulator using multiprocessing, ensuring all are valid."""
         print("Generating data...")
 
-        # Initialize lists for data and theta
-        data, theta = [], []
-
         # Setup multiprocessing
         max_processes = max(1, int(mp.cpu_count() * 0.75))
         print(f"Number of CPU cores being used: {max_processes}")
 
+        # Initialize lists for data and theta
+        valid_data, valid_theta = [], []
+
         # Initialize a tqdm progress bar
-        pbar = tqdm(total=num_samples, desc="Generating Samples")
+        with tqdm(total=num_samples, desc="Generating Samples") as pbar:
 
-        # Keep generating data until the desired number of samples is reached
-        while len(data) < num_samples:
-            # Determine how many more samples are needed
-            samples_needed = num_samples - len(data)
+            while len(valid_data) < num_samples:
+                # Adjust the number of samples to generate based on how many are still needed
+                samples_needed = num_samples - len(valid_data)
 
-            # Generate parameter samples
-            all_params = self.prior(samples_needed)
+                # Generate parameter samples
+                all_params = self.prior(samples_needed)
 
-            # Use multiprocessing to process the newly generated parameters
-            with mp.Pool(processes=max_processes) as pool:
-                results = pool.map(partial(self.worker), all_params)
+                # Use multiprocessing to process the newly generated parameters
+                with mp.Pool(processes=max_processes) as pool:
+                    results = pool.map(partial(self.worker), all_params)
 
-            # Filter and add successful simulations
-            for result in results:
-                if result is not None:
+                # Process the results
+                for result in results:
                     sim_data, sim_params = result
-                    data.append(sim_data)
-                    theta.append(sim_params)
-                    # Update the progress bar
-                    pbar.update(1)
-                    if len(data) == num_samples:
-                        break
+                    # Check if the simulation result is not the failure signature (not all ones)
+                    if not np.all(sim_data == 1):
+                        valid_data.append(sim_data)
+                        valid_theta.append(sim_params)
+                        pbar.update(1)
 
-        # Close the progress bar once the loop is complete
-        pbar.close()
+        # Convert data and theta lists to numpy arrays
+        valid_data = np.asarray(valid_data)
+        valid_theta = np.asarray(valid_theta)
 
-        # Convert data and theta lists to numpy arrays and then to torch tensors
-        data = np.asarray(data)
-        theta = np.asarray(theta)
-        print(data.shape)
-        data = np.squeeze(data, axis=1)
-        print(data.shape)
-        data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
-        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+        # Ensure correct shape before conversion to tensors
+        print(valid_data.shape)
+        valid_data = np.squeeze(valid_data, axis=1)
+        print(valid_data.shape)
 
-        return theta, data
+        # Convert to torch tensors and move to the specified device
+        valid_data = torch.from_numpy(valid_data).to(
+            dtype=torch.float32, device=self.device
+        )
+        valid_theta = torch.from_numpy(valid_theta).to(
+            dtype=torch.float32, device=self.device
+        )
 
-    # def generate_data(self, num_samples=1000):
-    #     """
-    #     Generate data samples based on the prior and simulator.
-    #     """
-
-    #     theta = self.prior(num_samples=num_samples)
-
-    #     # Calculate 75% of the available CPUs, rounded down
-    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
-    #     print("Number of CPU cores being used:", max_processes)
-
-    #     # # Use Pool from torch.multiprocessing
-    #     # with mp.Pool(processes=max_processes) as pool:
-    #     #     data = pool.map(self.simulator, theta)
-
-    #     data = []
-
-    #     for params in theta:
-    #         simulation_result = self.simulator(params)
-    #         data.append(simulation_result)
-
-    #     data = np.asarray(data)
-    #     data = np.squeeze(data, axis=1)
-
-    #     data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
-    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
-
-    #     # data = torch.tensor(data, dtype=torch.float32, device=self.device)
-    #     # theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
-    #     return theta, data
-
-    # def generate_data(self, num_samples=1000):
-    #     theta = []
-    #     data = []
-    #     print("hello")
-    #     # Calculate 75% of the available CPUs, rounded down
-    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
-    #     print("Number of CPU cores being used:", max_processes)
-
-    #     while len(data) < num_samples:
-    #         params = self.prior(1)[0]  # Generate a single sample
-    #         simulation_result = self.simulator(params)
-    #         if simulation_result is not None:
-    #             data.append(simulation_result)
-    #             theta.append(params)
-
-    #     data = np.asarray(data)
-    #     theta = np.asarray(theta)
-
-    #     data = np.squeeze(data, axis=1)
-
-    #     data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
-    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
-
-    #     return theta, data
-
-    # def generate_data(self, num_samples=1000):
-    #     """
-    #     Generate data samples based on the prior and simulator.
-
-    #     Parameters:
-    #     - num_samples (int): Number of samples to generate.
-
-    #     Returns:
-    #     - Tuple[torch.Tensor, torch.Tensor]: Sampled parameters and corresponding simulated data.
-    #     """
-    #     theta = self.prior(num_samples=num_samples)
-    #     # Determine the number of processes: max CPUs available - 4
-    #     # Calculate 75% of the available CPUs, rounded down
-    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
-    #     print("Number of CPU cores being used:", max_processes)
-
-    #     # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
-    #     mp.set_start_method(
-    #         "spawn", force=True
-    #     )
-
-    #     with mp.Pool(processes=max_processes) as pool:
-    #         data = pool.map(self.simulator, theta)
-
-    #     # with mp.Pool(processes=max_processes) as pool:
-    #     #     data = pool.map(self.simulator, theta)
-    #     data = np.asarray(data)
-    #     data = np.squeeze(data, axis=1)
-
-    #     data = torch.tensor(data, dtype=torch.float32, device=self.device)
-    #     theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
-    #     return theta, data
+        return valid_theta, valid_data
 
     def prepare_data(self, num_samples=1000, scale=True, validation=True):
         """
