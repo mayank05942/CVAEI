@@ -6,9 +6,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from .gillespy2_model_villar import Vilar_Oscillator
 from gillespy2 import SSACSolver
+from gillespy2 import (
+    Model,
+    Species,
+    Reaction,
+    Parameter,
+    RateRule,
+    AssignmentRule,
+    FunctionDefinition,
+)
+from gillespy2 import EventAssignment, EventTrigger, Event
+from gillespy2.core.events import *
 
 import multiprocessing as mp
-import gillespy2
+
 import logging
 
 # from torch.multiprocessing import Pool, set_start_method
@@ -23,7 +34,7 @@ class Villar:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
         self.model = model if model is not None else Vilar_Oscillator()
 
         if true_params is None:
@@ -91,11 +102,11 @@ class Villar:
         # original_level = gillespy2_logger.getEffectiveLevel()
         # gillespy2_logger.setLevel(logging.ERROR)
 
-        solver = SSACSolver(self.model)
+        local_solver = SSACSolver(model=self.model)
         params = params.ravel()
         res = self.model.run(
-            solver=solver,
-            timeout=0.33,
+            solver=local_solver,
+            timeout=1000.33,
             variables={
                 self.parameter_names[i]: params[i]
                 for i in range(len(self.parameter_names))
@@ -103,7 +114,7 @@ class Villar:
         )
 
         if res.rc == 33:
-            return np.ones((1, 3, 200))
+            return None
         if transform:
             sp_C = res["C"]
             sp_A = res["A"]
@@ -160,33 +171,60 @@ class Villar:
         samples = np.random.rand(num_samples, len(self.dmin)) * ranges + self.dmin
         return samples
 
+    # def generate_data(self, num_samples=1000):
+    #     """
+    #     Generate data samples based on the prior and simulator.
+    #     """
+
+    #     theta = self.prior(num_samples=num_samples)
+
+    #     # Calculate 75% of the available CPUs, rounded down
+    #     max_processes = max(1, int(mp.cpu_count() * 0.75))
+    #     print("Number of CPU cores being used:", max_processes)
+
+    #     # # Use Pool from torch.multiprocessing
+    #     # with mp.Pool(processes=max_processes) as pool:
+    #     #     data = pool.map(self.simulator, theta)
+
+    #     data = []
+
+    #     for params in theta:
+    #         simulation_result = self.simulator(params)
+    #         data.append(simulation_result)
+
+    #     data = np.asarray(data)
+    #     data = np.squeeze(data, axis=1)
+
+    #     data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
+    #     theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+
+    #     # data = torch.tensor(data, dtype=torch.float32, device=self.device)
+    #     # theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
+    #     return theta, data
+
     def generate_data(self, num_samples=1000):
-        """
-        Generate data samples based on the prior and simulator.
-        """
-        # Ensure to use 'spawn' start method, especially important when using CUDA with multiprocessing
-        # try:
-        #     set_start_method("spawn")
-        # except RuntimeError as e:
-        #     print(
-        #         e
-        #     )  # The start method can only be set once per program, so we catch the exception if it's already set.
-
-        theta = self.prior(num_samples=num_samples)
-
+        theta = []
+        data = []
+        print("hello")
         # Calculate 75% of the available CPUs, rounded down
-        max_processes = max(1, int(torch.multiprocessing.cpu_count() * 0.75))
+        max_processes = max(1, int(mp.cpu_count() * 0.75))
         print("Number of CPU cores being used:", max_processes)
 
-        # Use Pool from torch.multiprocessing
-        with mp.Pool(processes=max_processes) as pool:
-            data = pool.map(self.simulator, theta)
+        while len(data) < num_samples:
+            params = self.prior(1)[0]  # Generate a single sample
+            simulation_result = self.simulator(params)
+            if simulation_result is not None:
+                data.append(simulation_result)
+                theta.append(params)
 
         data = np.asarray(data)
+        theta = np.asarray(theta)
+
         data = np.squeeze(data, axis=1)
 
-        data = torch.tensor(data, dtype=torch.float32, device=self.device)
-        theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
+        data = torch.from_numpy(data).to(dtype=torch.float32, device=self.device)
+        theta = torch.from_numpy(theta).to(dtype=torch.float32, device=self.device)
+
         return theta, data
 
     # def generate_data(self, num_samples=1000):
