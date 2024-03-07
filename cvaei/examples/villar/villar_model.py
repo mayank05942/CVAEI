@@ -111,7 +111,7 @@ class Villar:
                 # Process simulation result
                 if res.rc == 33:
                     # Handling the case where simulation exceeded timeout
-                    return np.ones((1, 3, 200))
+                    return np.full((1, 3, 200), np.inf)
 
                 if transform:
 
@@ -141,6 +141,40 @@ class Villar:
 
     def generate_data(self, num_samples=1000, resample_failed=True):
         print("Generating data...")
+
+        theta = self.prior(num_samples)
+
+        with mp.Pool(processes=mp.cpu_count() - 2) as pool:
+            series = pool.map(self.simulator, theta)
+        series = np.array(series)
+
+        # Check for divergence
+        while True:
+            inf_inds = [
+                i
+                for i, ts in enumerate(series)
+                if np.isinf(ts).any() or np.isnan(ts).any()
+            ]
+            if len(inf_inds) == 0:
+                series = np.squeeze(series, axis=1)
+                series = torch.from_numpy(series).to(
+                    dtype=torch.float32, device=self.device
+                )
+                theta = torch.from_numpy(theta).to(
+                    dtype=torch.float32, device=self.device
+                )
+
+                return theta, series
+            else:
+                new_params = self.prior(num_samples)
+
+                with mp.Pool(processes=mp.cpu_count() - 2) as pool:
+                    new_tst = pool.map(self.simulator, new_params)
+                    new_tst = np.asarray(new_tst)
+
+                for i, ind in enumerate(inf_inds):
+                    theta[ind] = new_params[i]
+                    series[ind] = new_tst[i]
 
         # Initialize multiprocessing pool
         with mp.Pool(processes=mp.cpu_count()) as pool:
