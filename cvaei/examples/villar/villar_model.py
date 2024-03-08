@@ -36,7 +36,7 @@ class Villar:
         - true_params (torch.Tensor, optional): The true parameters for the MA2 model.
         """
 
-        self.device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = model if model is not None else Vilar_Oscillator()
 
         if true_params is None:
