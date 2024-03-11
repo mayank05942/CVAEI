@@ -111,10 +111,7 @@ class MultiTaskCVAE(nn.Module):
         misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
         # KL divergence loss
         kl_div = (
-            -0.5
-            * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
-            * self.beta
-            * self.kld
+            -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
         )
 
         # Total loss using Geometric Mean
