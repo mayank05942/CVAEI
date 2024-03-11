@@ -93,6 +93,19 @@ class CNN_CVAE(nn.Module):
         recon_x1, recon_x2 = self.decode(z, cond)
         return recon_x1, recon_x2, mu, logvar
 
+    # def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
+    #     # Reconstruction loss compares the input x to its reconstruction x_hat
+    #     recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
+    #     # Misfit loss compares the actual y to the predicted y_hat
+    #     misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+    #     # KL divergence loss
+    #     kl_div = (
+    #         -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
+    #     )
+    #     # Total loss
+    #     total_loss = recon_loss + misfit_loss + kl_div
+    #     return total_loss, recon_loss, misfit_loss, kl_div, beta
+
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
         # Reconstruction loss compares the input x to its reconstruction x_hat
         recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
@@ -102,8 +115,15 @@ class CNN_CVAE(nn.Module):
         kl_div = (
             -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
         )
-        # Total loss
-        total_loss = recon_loss + misfit_loss + kl_div
+
+        # Use geometric mean for the total loss
+        epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
+        total_loss = (
+            torch.pow(recon_loss + epsilon, 1 / 3)
+            * torch.pow(misfit_loss + epsilon, 1 / 3)
+            * torch.pow(torch.abs(kl_div) + epsilon, 1 / 3)
+        )
+
         return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     def process_batch(
