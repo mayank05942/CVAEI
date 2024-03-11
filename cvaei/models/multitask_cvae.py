@@ -91,17 +91,44 @@ class MultiTaskCVAE(nn.Module):
         recon_x1, recon_x2 = self.decode(z, cond)
         return recon_x1, recon_x2, mu, logvar
 
+    # def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
+    #     # Reconstruction loss compares the input x to its reconstruction x_hat
+    #     recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
+    #     # Misfit loss compares the actual y to the predicted y_hat
+    #     misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+    #     # KL divergence loss
+    #     kl_div = (
+    #         -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
+    #     )
+    #     # Total loss
+    #     total_loss = recon_loss + misfit_loss + kl_div
+    #     return total_loss, recon_loss, misfit_loss, kl_div, beta
+
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
-        # Reconstruction loss compares the input x to its reconstruction x_hat
+        # Reconstruction loss
         recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
-        # Misfit loss compares the actual y to the predicted y_hat
+        # Misfit loss
         misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
         # KL divergence loss
         kl_div = (
-            -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
+            -0.5
+            * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
+            * self.beta
+            * self.kld
         )
-        # Total loss
-        total_loss = recon_loss + misfit_loss + kl_div
+
+        # Total loss using Geometric Mean
+        # Add a small epsilon to prevent log(0)
+        epsilon = 1e-8
+        total_loss = torch.exp(
+            (
+                torch.log(recon_loss + epsilon)
+                + torch.log(misfit_loss + epsilon)
+                + torch.log(torch.abs(kl_div) + epsilon)
+            )
+            / 3
+        )
+
         return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     def process_batch(
