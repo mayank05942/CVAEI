@@ -3,6 +3,7 @@ from torch import nn
 from typing import List
 from typing import Tuple
 import torch.nn.functional as F
+from typing import List, Callable
 
 
 class Encoder(nn.Module):
@@ -131,55 +132,61 @@ class MultiTaskDecoder(nn.Module):
 
 class CNN_Decoder(nn.Module):
     """
-    CNN_Decoder takes a latent variable (Nx200) and a conditional input (Nx3x200) to reconstruct
-    both the original input (Nx15) and the conditional data (Nx3x200).
+    CNN_Decoder takes a latent variable (NxL) and a conditional input (NxSxT) to reconstruct
+    both the original input (Nx input_dim) and the conditional data (NxSxT).
     """
 
     def __init__(
         self,
         latent_dim: int,
-        conditional_dim: int,  # This is 3, as per Nx3x200
-        output_dim_1: int,  # This is 15, for the original input dimension
-        sequence_length: int,  # This is 200, matching the conditional sequence length
+        conditional_dim: Tuple[int, int],  # tuple (S, T)
+        output_dim_1: int,  # input dim
         conv_output_channels: List[int],
         kernel_sizes: List[int],
-        output_channels: int,  # This should also be 3, for the conditional output channels
+        activation_fn: nn.Module = nn.ReLU(),
     ):
         super(CNN_Decoder, self).__init__()
 
         self.latent_dim = latent_dim
+        self.conditional_channels, self.sequence_length = conditional_dim
         self.conditional_dim = conditional_dim
         self.output_dim_1 = output_dim_1
-        self.sequence_length = sequence_length
-        self.output_channels = output_channels
+        self.output_channels = self.conditional_channels
+
+        self.activation_fn = activation_fn
 
         # The latent variable will be concatenated with the conditional input, thus needing adjustment
-        self.fc_expand = nn.Linear(
-            latent_dim, sequence_length
-        )  # Adjusting this to properly prepare latent for concatenation
+        self.fc_expand = nn.Linear(latent_dim, self.sequence_length)
 
-        self.conv_layers = nn.ModuleList()
+        # Initialize Sequential container for Conv1D, BatchNorm1d, and Activation layers
+        modules = []
         in_channels = (
-            conditional_dim + 1
-        )  # Adding 1 channel to the conditional input for the expanded latent variable
+            self.conditional_channels + 1
+        )  # Adjust for concatenated latent variable
         for out_channels, kernel_size in zip(conv_output_channels, kernel_sizes):
-            self.conv_layers.append(
+            modules.append(
                 nn.Conv1d(
                     in_channels,
                     out_channels,
                     kernel_size=kernel_size,
                     stride=1,
-                    padding=kernel_size // 2,
+                    padding=1,
                 )
             )
+            modules.append(nn.BatchNorm1d(out_channels))
+            modules.append(activation_fn)
             in_channels = out_channels
 
+        self.convolutional_sequence = nn.Sequential(
+            *modules
+        )  # Bundle the layers together
+
         # Calculating the flattened size for the linear layer
-        flattened_size = conv_output_channels[-1] * sequence_length
+        flattened_size = conv_output_channels[-1] * self.sequence_length
 
         self.output_layer_1 = nn.Linear(flattened_size, output_dim_1)
         self.output_layer_2 = nn.Conv1d(
-            conv_output_channels[-1], output_channels, kernel_size=1, stride=1
+            conv_output_channels[-1], self.output_channels, kernel_size=1, stride=1
         )
 
     def forward(self, z: torch.Tensor, condition: torch.Tensor):
@@ -190,12 +197,8 @@ class CNN_Decoder(nn.Module):
         )  # Concatenating along the channel dimension to get Nx4x200
 
         # Process the combined input through Conv1D layers
-        x = combined_input
-        # print(x.shape)
-        for layer in self.conv_layers:
-            x = F.relu(layer(x))
+        x = self.convolutional_sequence(combined_input)
 
-        # Flatten the output from the conv layers to pass through the linear layer
         x_flattened = x.view(x.size(0), -1)
         reconstructed_input = self.output_layer_1(x_flattened)
 

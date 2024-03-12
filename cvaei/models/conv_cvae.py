@@ -14,11 +14,10 @@ class CNN_CVAE(nn.Module):
         self,
         input_dim,
         latent_dim,
-        conditional_dim,
+        conditional_dim: Tuple[int, int],
         encoder_hidden_dims: List[int],
-        sequence_length: int,  # Added parameter for sequence length
-        conv_output_channels: List[int],  # Added parameter for Conv1D output channels
-        kernel_sizes: List[int],  # Added parameter for Conv1D kernel sizes
+        conv_output_channels: List[int],
+        kernel_sizes: List[int],
         activation_fn: nn.Module = nn.ReLU(),
         device=None,
         w_recon=1.0,
@@ -67,10 +66,9 @@ class CNN_CVAE(nn.Module):
             latent_dim=latent_dim,
             conditional_dim=conditional_dim,
             output_dim_1=input_dim,
-            sequence_length=sequence_length,
             conv_output_channels=conv_output_channels,
             kernel_sizes=kernel_sizes,
-            output_channels=conditional_dim,
+            activation_fn=activation_fn,
         )
 
     def encode(self, x):
