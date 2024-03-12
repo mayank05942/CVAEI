@@ -17,6 +17,7 @@ class CNN_CVAE(nn.Module):
         conditional_dim: Tuple[int, int],
         encoder_hidden_dims: List[int],
         conv_output_channels: List[int],
+        output_linear_layer: List[int],
         kernel_sizes: List[int],
         activation_fn: nn.Module = nn.ReLU(),
         device=None,
@@ -68,6 +69,7 @@ class CNN_CVAE(nn.Module):
             output_dim_1=input_dim,
             conv_output_channels=conv_output_channels,
             kernel_sizes=kernel_sizes,
+            linear_layers=output_linear_layer,
             activation_fn=activation_fn,
         )
 

@@ -143,66 +143,80 @@ class CNN_Decoder(nn.Module):
         output_dim_1: int,  # input dim
         conv_output_channels: List[int],
         kernel_sizes: List[int],
+        linear_layers: List[int],
         activation_fn: nn.Module = nn.ReLU(),
     ):
         super(CNN_Decoder, self).__init__()
 
         self.latent_dim = latent_dim
         self.conditional_channels, self.sequence_length = conditional_dim
-        self.conditional_dim = conditional_dim
+        # self.conditional_dim = conditional_dim
         self.output_dim_1 = output_dim_1
-        self.output_channels = self.conditional_channels
+        # self.output_channels = self.conditional_channels
 
         self.activation_fn = activation_fn
 
         # The latent variable will be concatenated with the conditional input, thus needing adjustment
-        self.fc_expand = nn.Linear(latent_dim, self.sequence_length)
+        self.fc_expand = nn.Linear(
+            latent_dim, self.sequence_length * self.conditional_channels
+        )
 
-        # Initialize Sequential container for Conv1D, BatchNorm1d, and Activation layers
         modules = []
-        in_channels = (
-            self.conditional_channels + 1
-        )  # Adjust for concatenated latent variable
+        in_channels = self.conditional_channels + 1
         for out_channels, kernel_size in zip(conv_output_channels, kernel_sizes):
-            modules.append(
-                nn.Conv1d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=kernel_size,
-                    stride=1,
-                    padding=1,
+            modules.extend(
+                [
+                    nn.Conv1d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=kernel_size,
+                        stride=1,
+                        padding=1,
+                    ),
+                    nn.BatchNorm1d(out_channels),
+                    activation_fn,
+                ]
+            )
+            in_channels = out_channels
+        self.convolutional_sequence = nn.Sequential(*modules)
+
+        linear_modules = []
+        flattened_size = conv_output_channels[-1] * self.sequence_length
+        for i, linear_layer_output_features in enumerate(linear_layers):
+            linear_modules.append(
+                nn.Linear(
+                    flattened_size if i == 0 else linear_layers[i - 1],
+                    linear_layer_output_features,
                 )
             )
-            modules.append(nn.BatchNorm1d(out_channels))
-            modules.append(activation_fn)
-            in_channels = out_channels
+            if (
+                i < len(linear_layers) - 1
+            ):  # Apply activation after each linear layer except the last one
+                linear_modules.append(activation_fn)
+            flattened_size = linear_layer_output_features
+        self.decoder_linear_layers = nn.Sequential(*linear_modules)
 
-        self.convolutional_sequence = nn.Sequential(
-            *modules
-        )  # Bundle the layers together
-
-        # Calculating the flattened size for the linear layer
-        flattened_size = conv_output_channels[-1] * self.sequence_length
-
-        self.output_layer_1 = nn.Linear(flattened_size, output_dim_1)
-        self.output_layer_2 = nn.Conv1d(
-            conv_output_channels[-1], self.output_channels, kernel_size=1, stride=1
+        self.output_layer_linear = nn.Linear(linear_layers[-1], output_dim_1)
+        self.output_layer_conv = nn.Conv1d(
+            conv_output_channels[-1],
+            self.conditional_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
         )
 
     def forward(self, z: torch.Tensor, condition: torch.Tensor):
-        # Expand and reshape latent variable for concatenation with the condition
-        z_expanded = self.fc_expand(z).view(-1, 1, self.sequence_length)
-        combined_input = torch.cat(
-            (z_expanded, condition), dim=1
-        )  # Concatenating along the channel dimension to get Nx4x200
 
-        # Process the combined input through Conv1D layers
+        z_expanded = z.unsqueeze(1)
+
+        combined_input = torch.cat((z_expanded, condition), dim=1)
+
         x = self.convolutional_sequence(combined_input)
-
         x_flattened = x.view(x.size(0), -1)
-        reconstructed_input = self.output_layer_1(x_flattened)
+        reconstructed_input = self.output_layer_linear(
+            self.decoder_linear_layers(x_flattened)
+        )
 
-        # Pass through the final Conv1d layer to match the conditional data dimension
-        reconstructed_condition = self.output_layer_2(x)
+        reconstructed_condition = self.output_layer_conv(x)
 
         return reconstructed_input, reconstructed_condition
