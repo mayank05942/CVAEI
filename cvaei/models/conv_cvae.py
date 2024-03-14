@@ -117,7 +117,7 @@ class CNN_CVAE(nn.Module):
 
         if self.mod == "robust":
             recon_loss = self.custom_loss(x_hat, x) * self.w_recon
-            misfit_loss = self.custom_loss(y_hat, y) * self.w_misfit
+            misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
         else:
             recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
             misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
