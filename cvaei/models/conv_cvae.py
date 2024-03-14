@@ -26,6 +26,7 @@ class CNN_CVAE(nn.Module):
         kld=1.0,
         combine=None,
         mod=None,
+        weights=None,
         **kwargs,
     ):
         super(CNN_CVAE, self).__init__()
@@ -38,6 +39,7 @@ class CNN_CVAE(nn.Module):
         self.kld = kld
         self.combine = combine
         self.mod = mod
+        self.weights = weights
 
         self.training_losses = {
             "beta": [],
@@ -97,15 +99,25 @@ class CNN_CVAE(nn.Module):
         recon_x1, recon_x2 = self.decode(z, cond)
         return recon_x1, recon_x2, mu, logvar
 
-    def log_loss(self, y_t, y_prime_t):
-        ey_t = y_t - y_prime_t
-        return torch.mean(torch.log(torch.cosh(ey_t + 1e-12)))
+    def custom_loss(self, y_pred, y_true):
+        if self.weights is None:
+            weights = torch.tensor([1.0, 2.0, 1.0]).to(y_pred.device)
+        else:
+            self.weights = weights
+
+        mse_loss = (y_pred - y_true) ** 2  # Element-wise MSE
+        weighted_mse_loss = mse_loss * weights  # Apply weights to each feature's MSE
+        loss = weighted_mse_loss.mean(
+            dim=0
+        ).sum()  # Sum up the mean losses of each feature
+
+        return loss
 
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
 
         if self.mod == "robust":
-            recon_loss = self.log_loss(x_hat, x) * self.w_recon
-            misfit_loss = self.log_loss(y_hat, y) * self.w_misfit
+            recon_loss = self.custom_loss(x_hat, x) * self.w_recon
+            misfit_loss = self.custom_loss(y_hat, y) * self.w_misfit
         else:
             recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
             misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
