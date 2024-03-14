@@ -151,12 +151,6 @@ class CNN_Decoder(nn.Module):
         self.latent_dim = latent_dim
         self.conditional_channels, self.sequence_length = conditional_dim
         self.output_dim_1 = output_dim_1
-        # self.activation_fn = activation_fn
-
-        # The latent variable will be concatenated with the conditional input, thus needing adjustment
-        # self.fc_expand = nn.Linear(
-        #     latent_dim, self.sequence_length * self.conditional_channels
-        # )
 
         modules = []
         in_channels = self.conditional_channels + 1
@@ -176,41 +170,6 @@ class CNN_Decoder(nn.Module):
             )
             in_channels = out_channels
         self.convolutional_sequence = nn.Sequential(*modules)
-
-        # linear_modules = []
-        # flattened_size = conv_output_channels[-1] * self.sequence_length
-        # for i, linear_layer_output_features in enumerate(linear_layers):
-        #     linear_modules.append(
-        #         nn.Linear(
-        #             flattened_size if i == 0 else linear_layers[i - 1],
-        #             linear_layer_output_features,
-        #         )
-        #     )
-        #     if (
-        #         i <= len(linear_layers) - 1
-        #     ):
-        #         linear_modules.append(activation_fn)
-        #     flattened_size = linear_layer_output_features
-        # self.decoder_linear_layers = nn.Sequential(*linear_modules)
-
-        # Initialization
-        # linear_modules = []
-        # flattened_size = (
-        #     conv_output_channels[-1] * self.sequence_length
-        # )  # Calculate initial input size for the first linear layer
-
-        # # Constructing linear layers and activation functions in sequence
-        # for i, output_features in enumerate(linear_layers):
-        #     input_features = (
-        #         flattened_size if i == 0 else linear_layers[i - 1]
-        #     )  # Determine correct input size
-        #     linear_modules.append(
-        #         nn.Linear(input_features, output_features)
-        #     )  # Add linear layer
-        #     linear_modules.append(self.activation_fn)  # Add activation function
-
-        # # Wrap into nn.Sequential for automated data flow
-        # self.decoder_linear_layers = nn.Sequential(*linear_modules)
 
         linear_modules = []
         flattened_size = conv_output_channels[-1] * self.sequence_length

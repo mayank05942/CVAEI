@@ -24,6 +24,8 @@ class CNN_CVAE(nn.Module):
         w_recon=1.0,
         w_misfit=1.0,
         kld=1.0,
+        combine=None,
+        mod=None,
         **kwargs,
     ):
         super(CNN_CVAE, self).__init__()
@@ -34,6 +36,8 @@ class CNN_CVAE(nn.Module):
         self.w_recon = w_recon
         self.w_misfit = w_misfit
         self.kld = kld
+        self.combine = combine
+        self.mod = mod
 
         self.training_losses = {
             "beta": [],
@@ -93,18 +97,35 @@ class CNN_CVAE(nn.Module):
         recon_x1, recon_x2 = self.decode(z, cond)
         return recon_x1, recon_x2, mu, logvar
 
+    def log_loss(self, y_t, y_prime_t):
+        ey_t = y_t - y_prime_t
+        return torch.mean(torch.log(torch.cosh(ey_t + 1e-12)))
+
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
-        # Reconstruction loss compares the input x to its reconstruction x_hat
-        recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
-        # Misfit loss compares the actual y to the predicted y_hat
-        misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+
+        if self.mod == "robust":
+            recon_loss = self.log_loss(x_hat, x) * self.w_recon
+            misfit_loss = self.log_loss(y_hat, y) * self.w_misfit
+        else:
+            recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
+            misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+
         # KL divergence loss
         kl_div = (
             -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
         )
-        # Total loss
-        total_loss = recon_loss + misfit_loss + kl_div
-        return total_loss, recon_loss, misfit_loss, kl_div, beta
+
+        if self.combine == "gm":
+            epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
+            total_loss = (
+                torch.pow(recon_loss + epsilon, 1 / 3)
+                * torch.pow(misfit_loss + epsilon, 1 / 3)
+                * torch.pow(torch.abs(kl_div) + epsilon, 1 / 3)
+            )
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
+        else:
+            total_loss = recon_loss + misfit_loss + kl_div
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     # def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
     #     # Reconstruction loss compares the input x to its reconstruction x_hat
