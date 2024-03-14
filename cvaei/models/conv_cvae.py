@@ -130,10 +130,9 @@ class CNN_CVAE(nn.Module):
         if self.combine == "gm":
             epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
             total_loss = (
-                torch.pow(recon_loss + epsilon, 1 / 3)
-                * torch.pow(misfit_loss + epsilon, 1 / 3)
-                * torch.pow(torch.abs(kl_div) + epsilon, 1 / 3)
-            )
+                torch.pow(recon_loss + epsilon, 1 / 2)
+                * torch.pow(misfit_loss + epsilon, 1 / 2)
+            ) + kl_div
             return total_loss, recon_loss, misfit_loss, kl_div, beta
         else:
             total_loss = recon_loss + misfit_loss + kl_div
