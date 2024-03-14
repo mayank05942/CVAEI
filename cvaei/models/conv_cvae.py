@@ -103,7 +103,7 @@ class CNN_CVAE(nn.Module):
         if self.weights is None:
             weights = torch.tensor([1.0, 2.0, 1.0]).to(y_pred.device)
         else:
-            weights = self.weights
+            weights = self.weights.to(y_pred.device)
 
         mse_loss = (y_pred - y_true) ** 2  # Element-wise MSE
         weighted_mse_loss = mse_loss * weights  # Apply weights to each feature's MSE
