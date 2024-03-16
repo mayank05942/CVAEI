@@ -28,6 +28,7 @@ class CVAE(ModelBase):
         encoder_hidden_dims: List[int],
         decoder_hidden_dims: List[int],
         activation_fn: nn.Module = nn.ReLU(),
+        combine=None,
         **kwargs,  # Accept additional keyword arguments
     ):
         super(CVAE, self).__init__()
@@ -37,6 +38,7 @@ class CVAE(ModelBase):
         self.conditional_dim = conditional_dim
         self.w_recon = kwargs.get("w_recon", 1.0)
         self.w_misfit = kwargs.get("w_misfit", 1.0)
+        self.combine = combine
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -95,8 +97,16 @@ class CVAE(ModelBase):
         # KL divergence loss
         kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta
         # Total loss
-        total_loss = recon_loss + misfit_loss + kl_div
-        return total_loss, recon_loss, misfit_loss, kl_div, beta
+        if self.combine == "gm":
+            epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
+            total_loss = (
+                torch.pow(recon_loss + epsilon, 1 / 2)
+                * torch.pow(misfit_loss + epsilon, 1 / 2)
+            ) + kl_div
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
+        else:
+            total_loss = recon_loss + misfit_loss + kl_div
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     def process_batch(
         self,
