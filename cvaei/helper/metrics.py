@@ -25,7 +25,7 @@ class InferenceMetrics:
         :return: Numpy array of the data.
         """
         if isinstance(data, torch.Tensor):
-            return data.numpy()
+            return data.cpu().numpy()
         elif isinstance(data, (list, tuple)):
             return np.array(data)
         return data
