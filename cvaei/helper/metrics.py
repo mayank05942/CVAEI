@@ -10,12 +10,15 @@ class InferenceMetrics:
         self, true_param, observed_data, posterior_params, posterior_sims, **kwargs
     ):
 
-        self.true_param = self._repeat_to_match(true_param, posterior_params)
-        self.observed_data = self._repeat_to_match(observed_data, posterior_sims)
+        self.true_param = self._repeat_to_match(
+            self._ensure_numpy(true_param, posterior_params)
+        )
+        self.observed_data = self._repeat_to_match(
+            self._ensure_numpy(observed_data, posterior_sims)
+        )
         self.posterior_params = self._ensure_numpy(posterior_params)
         self.posterior_sims = self._ensure_numpy(posterior_sims)
         self.method = kwargs.get("method", "linear")
-        print(self.method)
 
     def _ensure_numpy(self, data):
         """
