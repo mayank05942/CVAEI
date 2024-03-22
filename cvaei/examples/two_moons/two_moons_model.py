@@ -244,20 +244,24 @@ class TwoMoons:
             train_theta_norm = self.theta_normalizer.transform(train_theta)
             self.data_normalizer.fit(train_data)
             train_data_norm = self.data_normalizer.transform(train_data)
+            return_values = (
+                train_theta_norm,
+                train_data_norm,
+                self.theta_normalizer,
+                self.data_normalizer,
+            )
+
         else:
             # Use unnormalized training data
             train_theta_norm = train_theta
             train_data_norm = train_data
+            return_values = (
+                train_theta_norm,
+                train_data_norm,
+            )
 
         print(f"Training Theta Shape: {train_theta_norm.shape}")
         print(f"Training Data Shape: {train_data_norm.shape}")
-
-        return_values = (
-            train_theta_norm,
-            train_data_norm,
-            self.theta_normalizer,
-            self.data_normalizer,
-        )
 
         if validation:
             # Generate validation data
