@@ -30,6 +30,8 @@ class Encoder(nn.Module):
             modules.append(activation_fn)
             input_dim = h_dim  # Set input dimension for the next layer
 
+        modules.append(nn.Dropout(0.5))
+
         self.layers = nn.Sequential(*modules)
 
         # Output layers for mean and log variance
@@ -115,6 +117,8 @@ class MultiTaskDecoder(nn.Module):
         self.layers = nn.Sequential(*modules)
 
         # Task-specific output layers, directly using provided dimensions
+        modules.append(nn.Dropout(0.5))
+
         self.output_layer_1 = nn.Linear(hidden_dims[-1], input_dim)
         self.output_layer_2 = nn.Linear(hidden_dims[-1], conditional_dim)
 
