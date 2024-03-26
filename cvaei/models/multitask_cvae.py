@@ -301,6 +301,7 @@ class MultiTaskCVAE(nn.Module):
         data_normalizer=None,
         forward_model=None,
         patience=5,
+        min_epochs=10,  # minimum epochs before early stopping trigger
     ):
 
         self.to(self.device)
@@ -337,9 +338,10 @@ class MultiTaskCVAE(nn.Module):
                 data_normalizer,
                 forward_model,
             )
+            tolerance = 0.001
 
             # Check for improvement
-            if avg_val_loss < best_val_loss:
+            if best_val_loss - avg_val_loss > tolerance:
                 best_val_loss = avg_val_loss
                 no_improve_epoch = 0
                 print(
@@ -348,11 +350,11 @@ class MultiTaskCVAE(nn.Module):
             else:
                 no_improve_epoch += 1
                 print(
-                    f"Epoch {epoch+1}: No improvement in validation loss for {no_improve_epoch} epochs."
+                    f"Epoch {epoch+1}: No significant improvement in validation loss for {no_improve_epoch} epochs."
                 )
 
             # Early Stopping Check
-            if no_improve_epoch >= patience:
+            if epoch >= min_epochs and no_improve_epoch >= patience:
                 print(
                     f"Early stopping triggered at epoch {epoch+1} with validation loss: {best_val_loss:.4f}"
                 )
