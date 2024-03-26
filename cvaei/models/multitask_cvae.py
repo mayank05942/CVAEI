@@ -22,6 +22,7 @@ class MultiTaskCVAE(nn.Module):
         w_recon=1.0,  # Explicit parameters
         w_misfit=1.0,
         kld=1.0,
+        combine=None,
         **kwargs,  # Accept additional keyword arguments
     ):
         super(MultiTaskCVAE, self).__init__()
@@ -32,6 +33,7 @@ class MultiTaskCVAE(nn.Module):
         self.w_recon = w_recon
         self.w_misfit = w_misfit
         self.kld = kld
+        self.combine = combine
 
         # self.w_recon = kwargs.get("w_recon", 1.0)
         # self.w_misfit = kwargs.get("w_misfit", 1.0)
@@ -105,24 +107,25 @@ class MultiTaskCVAE(nn.Module):
     #     return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
-        # Reconstruction loss compares the input x to its reconstruction x_hat
+
         recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
-        # Misfit loss compares the actual y to the predicted y_hat
         misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+
         # KL divergence loss
         kl_div = (
             -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
         )
 
-        # Use geometric mean for the total loss
-        epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
-        total_loss = (
-            torch.pow(recon_loss + epsilon, 1 / 3)
-            * torch.pow(misfit_loss + epsilon, 1 / 3)
-            * torch.pow(torch.abs(kl_div) + epsilon, 1 / 3)
-        )
-
-        return total_loss, recon_loss, misfit_loss, kl_div, beta
+        if self.combine == "gm":
+            epsilon = 1e-8  # To ensure numerical stability and avoid log(0)
+            total_loss = (
+                torch.pow(recon_loss + epsilon, 1 / 2)
+                * torch.pow(misfit_loss + epsilon, 1 / 2)
+            ) + kl_div
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
+        else:
+            total_loss = recon_loss + misfit_loss + kl_div
+            return total_loss, recon_loss, misfit_loss, kl_div, beta
 
     # def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
     #     # Reconstruction loss
