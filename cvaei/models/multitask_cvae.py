@@ -108,11 +108,9 @@ class MultiTaskCVAE(nn.Module):
 
     def loss_function(self, x, x_hat, y, y_hat, mean, logvar, beta):
 
-        # recon_loss = F.mse_loss(x_hat, x, reduction="sum") * self.w_recon
-        recon_loss = F.binary_cross_entropy(x_hat, x, reduction="sum") * self.w_recon
+        recon_loss = F.mse_loss(x_hat, x, reduction="mean") * self.w_recon
 
-        misfit_loss = F.binary_cross_entropy(y_hat, y, reduction="sum") * self.w_misfit
-        # misfit_loss = F.mse_loss(y_hat, y, reduction="sum") * self.w_misfit
+        misfit_loss = F.mse_loss(y_hat, y, reduction="mean") * self.w_misfit
 
         # KL divergence loss
         kl_div = (
