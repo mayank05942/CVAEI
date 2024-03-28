@@ -114,7 +114,7 @@ class MultiTaskCVAE(nn.Module):
 
         # KL divergence loss
         kl_div = (
-            -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
+            -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp()) * beta * self.kld
         )
 
         if self.combine == "gm":
