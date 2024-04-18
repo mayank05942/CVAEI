@@ -297,22 +297,29 @@ class MovingAverage2:
         plt.scatter(data[:, 0], data[:, 1], alpha=0.5, label="Estimated Posterior")
 
         # Draw the triangular prior
-        triangle_corners = np.array([[-2, 1], [2, 1], [0, -1]])
-        plt.plot(
-            [triangle_corners[0][0], triangle_corners[1][0]],
-            [triangle_corners[0][1], triangle_corners[1][1]],
-            "k--",
-        )
-        plt.plot(
-            [triangle_corners[1][0], triangle_corners[2][0]],
-            [triangle_corners[1][1], triangle_corners[2][1]],
-            "k--",
-        )
-        plt.plot(
-            [triangle_corners[2][0], triangle_corners[0][0]],
-            [triangle_corners[2][1], triangle_corners[0][1]],
-            "k--",
-        )
+        # triangle_corners = np.array([[-2, 1], [2, 1], [0, -1], [-2, 1]])
+
+        plt.plot([-2, 0], [1, -1], "k--", label="Prior")  # Left side
+        plt.plot([0, 2], [-1, 1], "k--")  # Right side
+
+        plt.plot([-2, 2], [1, 1], "k--")  # Base
+        # plt.plot(
+        #     [triangle_corners[0][0], triangle_corners[1][0]],
+        #     [triangle_corners[0][1], triangle_corners[1][1]],
+        #     "k--",
+        #     label="Prior",
+        # )
+        # plt.plot(
+        #     [triangle_corners[1][0], triangle_corners[2][0]],
+        #     [triangle_corners[1][1], triangle_corners[2][1]],
+        #     "k--",
+        # )
+        # plt.plot(
+        #     [triangle_corners[2][0], triangle_corners[0][0]],
+        #     [triangle_corners[2][1], triangle_corners[0][1]],
+        #     "k--",
+        # )
+        # plt.plot(triangle_corners[:, 0], triangle_corners[:, 1], "k--", label="Prior")
 
         # Plot the true value with dotted lines indicating its position
         plt.scatter(
@@ -322,11 +329,11 @@ class MovingAverage2:
         plt.axhline(y=true_params[1], color="red", linestyle="--", linewidth=1)
 
         # Set the axes limits and labels
-        plt.xlim(-2, 2)
-        plt.ylim(-1, 1)
+        # plt.xlim(-2, 2)
+        # plt.ylim(-1, 1)
         plt.xlabel("Theta 1")
         plt.ylabel("Theta 2")
-        plt.title("VAE: Posterior MA2")
+        plt.title("M-CVAE: Posterior MA2")
         plt.legend()
         # plt.grid(True)
         plt.show()

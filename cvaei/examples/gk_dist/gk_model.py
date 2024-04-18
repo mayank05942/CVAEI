@@ -227,7 +227,7 @@ class GKDistribution:
         theta = self.prior(num_samples=num_samples)
         data = np.array([self.GNK(*theta) for theta in theta])
         data = np.array([self.clean_data(y) for y in data])
-        data = self.clean_data(data)
+        # data = self.clean_data(data)
         data = torch.tensor(data, dtype=torch.float32, device=self.device)
         theta = torch.tensor(theta, dtype=torch.float32, device=self.device)
         return theta, data
