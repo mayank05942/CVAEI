@@ -183,8 +183,8 @@ class TwoMoons:
     def simulator(self, theta, seed=42):
         np.random.seed(seed)
         a = np.random.uniform(low=-np.pi / 2.0, high=np.pi / 2.0)
-        # r = np.random.normal(loc=0.1, scale=0.01)
-        r = np.random.normal(loc=1, scale=0.1)
+        r = np.random.normal(loc=0.1, scale=0.01)
+
         p = np.array([r * np.cos(a) + 0.25, r * np.sin(a)])
         z = p + np.array(
             [-np.abs(theta[0] + theta[1]), (-theta[0] + theta[1])]
